@@ -180,133 +180,14 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	// Apply defaults and validate
-	config.applyDefaults()
-	if err := config.validate(); err != nil {
+	ApplyDefaults(&config)
+	if err := ValidateConfig(&config); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	return &config, nil
 }
 
-// applyDefaults sets default values
-func (c *Config) applyDefaults() {
-	if c.Provider == "" {
-		c.Provider = "aws"
-	}
-
-	if c.Region == "" {
-		switch c.Provider {
-		case "aws":
-			c.Region = "us-east-1"
-		case "gcp":
-			c.Region = "us-central1"
-		case "azure":
-			c.Region = "eastus"
-		}
-	}
-
-	// Apply defaults to resources
-	for i := range c.Resources.Compute {
-		if c.Resources.Compute[i].Count == 0 {
-			c.Resources.Compute[i].Count = 1
-		}
-		if c.Resources.Compute[i].Type == "" {
-			c.Resources.Compute[i].Type = "small"
-		}
-	}
-
-	for i := range c.Resources.Storage {
-		if c.Resources.Storage[i].Type == "" {
-			c.Resources.Storage[i].Type = "bucket"
-		}
-	}
-
-	for i := range c.Resources.Database {
-		if c.Resources.Database[i].Size == "" {
-			c.Resources.Database[i].Size = "small"
-		}
-	}
-
-	for i := range c.Resources.Serverless {
-		if c.Resources.Serverless[i].Memory == 0 {
-			c.Resources.Serverless[i].Memory = 256
-		}
-		if c.Resources.Serverless[i].Timeout == 0 {
-			c.Resources.Serverless[i].Timeout = 60
-		}
-	}
-
-	// State defaults
-	if c.State.Backend == "" {
-		switch c.Provider {
-		case "aws":
-			c.State.Backend = "s3"
-		case "gcp":
-			c.State.Backend = "gcs"
-		case "azure":
-			c.State.Backend = "azureblob"
-		default:
-			c.State.Backend = "local"
-		}
-	}
-}
-
-// validate checks config for errors
-func (c *Config) validate() error {
-	// Validate provider
-	validProviders := []string{"aws", "gcp", "azure", "alibaba", "tencent"}
-	valid := false
-	for _, p := range validProviders {
-		if c.Provider == p {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		return fmt.Errorf("invalid provider: %s", c.Provider)
-	}
-
-	// Validate compute resources
-	for _, compute := range c.Resources.Compute {
-		if compute.Name == "" {
-			return fmt.Errorf("compute resource must have a name")
-		}
-		validTypes := []string{"small", "medium", "large", "xlarge"}
-		valid := false
-		for _, t := range validTypes {
-			if compute.Type == t {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return fmt.Errorf("invalid compute type: %s", compute.Type)
-		}
-	}
-
-	// Validate database resources
-	for _, db := range c.Resources.Database {
-		if db.Name == "" {
-			return fmt.Errorf("database resource must have a name")
-		}
-		if db.Engine == "" {
-			return fmt.Errorf("database %s must have an engine", db.Name)
-		}
-		validSizes := []string{"small", "medium", "large"}
-		valid := false
-		for _, s := range validSizes {
-			if db.Size == s {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return fmt.Errorf("invalid database size: %s", db.Size)
-		}
-	}
-
-	return nil
-}
 
 // SaveConfig saves configuration to a file
 func SaveConfig(config *Config, path string) error {

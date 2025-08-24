@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(./genesys:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

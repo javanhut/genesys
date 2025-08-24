@@ -1,0 +1,13 @@
+# Simple static website deployment
+provider: aws
+region: us-east-1
+
+outcomes:
+  static-site:
+    domain: my-awesome-site.com
+    enable_cdn: true
+    enable_https: true
+
+policies:
+  require_encryption: true
+  max_cost_per_month: 50

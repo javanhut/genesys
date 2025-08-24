@@ -55,6 +55,10 @@ go build -o genesys ./cmd/genesys
 
 # JSON output for automation
 ./genesys execute function my-api runtime=python3.11 --output json
+
+# Execute from configuration file
+./genesys execute --config examples/simple-website.yaml
+./genesys execute --config examples/serverless-api.yaml --apply
 ```
 
 ### Parameter Syntax
@@ -174,13 +178,20 @@ genesys/
 ├── cmd/genesys/           # CLI entry point
 │   ├── main.go
 │   └── commands/          # Command implementations
-├── pkg/
-│   ├── provider/          # Provider interface and implementations
-│   ├── config/            # YAML/TOML configuration
-│   ├── intent/            # Intent parsing
-│   ├── planner/           # Plan generation
-│   └── executor/          # Plan execution (future)
-├── example.yaml           # Example configuration
+├── pkg/                   # Core packages
+│   ├── provider/          # Provider interface and implementations  
+│   ├── config/            # YAML/TOML configuration with validation
+│   ├── intent/            # Intent parsing and interpretation
+│   ├── planner/           # Plan generation and formatting
+│   ├── executor/          # Plan execution (future)
+│   └── discovery/         # Resource discovery (future)
+├── internal/              # Internal utilities (future)
+├── examples/              # Configuration examples
+│   ├── simple-website.yaml
+│   ├── serverless-api.yaml
+│   ├── web-application.toml
+│   └── multi-cloud.yaml
+├── ARCHITECTURE.md        # Detailed architecture documentation
 └── README.md
 ```
 
