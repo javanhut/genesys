@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/javanhut/genesys/pkg/config"
 	"github.com/javanhut/genesys/pkg/intent"

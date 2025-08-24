@@ -19,7 +19,8 @@ func NewInteractCommand() *cobra.Command {
 
 func runInteract(cmd *cobra.Command, args []string) error {
 	fmt.Println("Welcome to Genesys Interactive Mode!")
-	fmt.Println("====================================\n")
+	fmt.Println("====================================")
+	fmt.Println()
 
 	// Select outcome
 	var outcome string
@@ -83,8 +84,8 @@ func interactStaticSite() error {
 	}
 
 	// Generate and show plan
-	fmt.Println("\n📋 Plan for Static Website Deployment")
-	fmt.Println("=====================================")
+	fmt.Println("\nPlan for Static Website Deployment")
+	fmt.Println("===================================")
 	fmt.Println("\nWhat will happen:")
 	fmt.Println("1. Create S3 bucket for hosting website files")
 	fmt.Println("2. Configure bucket for static website hosting")
@@ -112,10 +113,10 @@ func interactStaticSite() error {
 	}
 
 	if applyConfirm {
-		fmt.Println("\n🚀 Deploying static website...")
+		fmt.Println("\nDeploying static website...")
 		fmt.Println("Note: Executor not yet implemented - this is a preview")
 	} else {
-		fmt.Println("\n📝 Plan saved. You can apply it later.")
+		fmt.Println("\nPlan saved. You can apply it later.")
 	}
 
 	return nil
@@ -158,8 +159,8 @@ func interactDatabase() error {
 		return err
 	}
 
-	fmt.Println("\n📋 Plan for Database Deployment")
-	fmt.Println("================================")
+	fmt.Println("\nPlan for Database Deployment")
+	fmt.Println("=============================")
 	fmt.Printf("\nDatabase Engine: %s\n", params.Engine)
 	fmt.Printf("Size: %s\n", params.Size)
 	fmt.Printf("High Availability: %v\n", params.MultiAZ)
@@ -203,8 +204,8 @@ func interactFunction() error {
 		return err
 	}
 
-	fmt.Println("\n📋 Plan for Function Deployment")
-	fmt.Println("================================")
+	fmt.Println("\nPlan for Function Deployment")
+	fmt.Println("=============================")
 	fmt.Printf("\nRuntime: %s\n", params.Runtime)
 	fmt.Printf("Trigger: %s\n", params.Trigger)
 	fmt.Printf("Memory: %d MB\n", params.Memory)
@@ -244,8 +245,8 @@ func interactBucket() error {
 		return err
 	}
 
-	fmt.Println("\n📋 Plan for Storage Bucket")
-	fmt.Println("==========================")
+	fmt.Println("\nPlan for Storage Bucket")
+	fmt.Println("========================")
 	fmt.Printf("\nBucket name: %s\n", params.Name)
 	fmt.Printf("Versioning: %v\n", params.Versioning)
 	fmt.Printf("Encryption: %v\n", params.Encryption)
