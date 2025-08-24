@@ -1,0 +1,2 @@
+- We  will be building a IaaS tool called Genesys. It will be written in Go and be used to solve problems with resource creation in CloudProviders
+- For this you will never use Emojis in code or documentation under no circumstances will you ever use emojis.
