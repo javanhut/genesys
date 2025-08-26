@@ -1,6 +1,6 @@
 # Serverless API with database
-provider: aws
-region: us-west-2
+# Example template for serverless API deployment
+# NOTE: Provider implementation removed - this is a template only
 
 resources:
   database:
@@ -38,18 +38,28 @@ resources:
       runtime: python3.11
       handler: auth.handler
       memory: 256
-      timeout: 10
+      timeout: 15
       environment:
-        JWT_SECRET: ${secrets.jwt_secret}
+        JWT_SECRET: ${secrets.jwt-key}
       triggers:
         - type: http
           path: /auth/*
           methods: [POST]
       tags:
         Environment: production
-        Service: auth
+        Service: api
+
+  storage:
+    - name: api-logs
+      type: bucket
+      versioning: false
+      encryption: true
+      lifecycle:
+        delete_after_days: 30
+      tags:
+        Environment: production
+        Service: api
 
 policies:
-  require_encryption: true
-  require_tags: [Environment, Service]
+  require_tags: ["Environment", "Service"]
   max_cost_per_month: 200

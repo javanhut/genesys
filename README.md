@@ -1,113 +1,123 @@
 # Genesys
 
-A simplicity-first Infrastructure as a Service tool that focuses on outcomes rather than resources.
-
-## Overview
-
-Genesys is a Go-based tool designed to replace the complexity of traditional IaC tools with a simple, outcome-focused approach. Instead of defining low-level resources, users specify what they want to achieve (e.g., 'static-site', 'database', 'function').
+A simplicity-first Infrastructure as a Service tool that focuses on outcomes rather than resources. It provides a discovery-first approach to cloud resource management with human-readable plans.
 
 ## Key Features
 
-- **Outcome-based deployment**: Ask for what you want, not how to build it
-- **Discovery-first**: Always check for existing resources before creating new ones
-- **Human-readable plans**: Plain English descriptions with IAM forecasting
-- **Provider-agnostic**: Same code works across AWS, GCP, Azure, and more
-- **State-less for users**: State automatically managed in cloud provider
-- **Preview by default**: Safe by default, explicit apply
-
-## Phase 0 MVP Implementation
-
-This implementation includes:
-
-- **CLI Scaffold**: Single `genesys` command with `execute` and `interact` modes  
-- **Intent Parser**: Supports `bucket`, `network`, `function`, `static-site`, `database`, `api`, `webapp`  
-- **Human Plans**: English descriptions with cost estimates and IAM permissions  
-- **Provider Interface**: Pluggable architecture for any cloud provider  
-- **Configuration Support**: YAML and TOML configuration files  
-- **Mock Provider**: For testing and development  
+- **Interactive Workflows** - Guided prompts for resource creation without manual config writing
+- **Multi-Cloud Support** - AWS, GCP, Azure, Tencent Cloud with unified interface
+- **Configuration-Driven** - YAML-based resource lifecycle management  
+- **Dry-Run Capability** - Preview all changes before deployment
+- **Direct API Integration** - Fast performance without heavy SDKs
+- **Provider-Agnostic** - Write once, deploy anywhere
 
 ## Quick Start
 
-### Build from source
+### Installation
+
 ```bash
-git clone https://github.com/javanhut/genesys
+# Build from source
+git clone <repository-url>
 cd genesys
 go build -o genesys ./cmd/genesys
 ```
 
-### Basic Usage
+### Configure Provider
 
 ```bash
-# Preview what would happen (default behavior)
-./genesys execute bucket my-data-bucket
-
-# Deploy a static website
-./genesys execute static-site domain=example.com --apply
-
-# Create a database with parameters
-./genesys execute database mydb engine=postgres size=large
-
-# Interactive mode
-./genesys interact
-
-# Discover existing resources
-./genesys discover
-
-# JSON output for automation
-./genesys execute function my-api runtime=python3.11 --output json
-
-# Execute from configuration file
-./genesys execute --config examples/simple-website.yaml
-./genesys execute --config examples/serverless-api.yaml --apply
+# Interactive provider setup
+genesys config setup
 ```
 
-### Parameter Syntax
-
-Parameters can be specified as `key=value` pairs:
+### Create Your First Resource
 
 ```bash
-# Function with parameters
-./genesys execute function my-api runtime=python3.11 memory=512 trigger=http
+# Start interactive workflow
+genesys interact
+# Select provider: aws
+# Select resource: S3 Storage Bucket  
+# Follow prompts to configure bucket
 
-# Static site with custom domain
-./genesys execute static-site domain=my-site.com cdn=true
+# Preview deployment
+genesys execute s3-mybucket-*.yaml --dry-run
 
-# Database with specific configuration
-./genesys execute database prod-db engine=postgres size=large storage=500
+# Deploy the resource
+genesys execute s3-mybucket-*.yaml
+
+# List your resources
+genesys list resources
+
+# Clean up when done
+genesys execute deletion s3-mybucket-*.yaml
 ```
 
-### Configuration Files
+## Available Commands
 
-Create a `genesys.yaml` file for complex infrastructure:
+### Interactive Mode
+```bash
+genesys interact                    # Start interactive resource creation
+```
+
+### Configuration Management
+```bash
+genesys config setup                # Configure cloud provider credentials
+genesys config list                 # List configured providers
+genesys config show aws             # Show provider configuration
+genesys config default aws          # Set default provider
+```
+
+### Resource Deployment
+```bash
+genesys execute config.yaml                    # Deploy resources
+genesys execute config.yaml --dry-run          # Preview changes
+genesys execute deletion config.yaml           # Delete resources
+```
+
+### Resource Discovery
+```bash
+genesys list resources              # List all resources (alias: discover)
+genesys list --service storage      # List only storage resources
+genesys list --output json          # JSON output format
+```
+
+## Supported Resources
+
+### Currently Implemented
+- **S3 Storage Buckets** - Complete lifecycle with versioning, encryption, lifecycle policies
+
+### Planned
+- **Compute Instances** - Virtual machines across providers
+- **Databases** - Managed database services
+- **Functions** - Serverless compute
+- **Networks** - VPCs, subnets, security groups
+
+## Configuration Example
+
+Generated S3 bucket configuration:
 
 ```yaml
 provider: aws
 region: us-east-1
-
 resources:
   storage:
-    - name: app-data
+    - name: my-app-storage
       type: bucket
       versioning: true
       encryption: true
-      
-  database:
-    - name: user-db
-      engine: postgres
-      size: medium
-      multi_az: true
-      
-  serverless:
-    - name: api-handler
-      runtime: python3.11
-      memory: 512
-      triggers:
-        - type: http
-```
-
-Then execute with:
-```bash
-./genesys execute --config genesys.yaml
+      public_access: false
+      tags:
+        Environment: development
+        ManagedBy: Genesys
+        Purpose: application-data
+      lifecycle:
+        archive_after_days: 90
+        delete_after_days: 365
+policies:
+  require_encryption: true
+  no_public_buckets: true
+  require_tags:
+    - Environment
+    - ManagedBy
 ```
 
 ## Example Outputs

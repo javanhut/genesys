@@ -1,88 +1,85 @@
-# Genesys
+# Genesys Documentation
 
-An Infrastructure as a Service (IaaS) tool for streamlined resource creation across cloud providers.
+Genesys is a simplicity-first Infrastructure as a Service tool that focuses on outcomes rather than resources. It provides a discovery-first approach to cloud resource management with human-readable plans.
 
-## Overview
+## Documentation Structure
 
-Genesys is a Go-based tool designed to simplify and standardize resource provisioning across multiple cloud platforms. It addresses common challenges in cloud resource management by providing a unified interface for infrastructure deployment.
+- [Getting Started](getting-started.md) - Quick start guide and installation
+- [Commands](commands.md) - Complete command reference
+- [Interactive Workflow](interactive-workflow.md) - Step-by-step interactive usage
+- [S3 Management](s3-workflow.md) - S3 bucket lifecycle management
+- [Configuration](configuration.md) - Provider configuration and credentials
+- [Architecture](../ARCHITECTURE.md) - Technical architecture overview
+- [Examples](examples.md) - Example configurations and workflows
 
-## Features
+## Quick Start
 
-- Multi-cloud provider support
-- Standardized resource creation workflows
-- Infrastructure state management
-- Resource dependency resolution
-- Automated provisioning pipelines
+1. Configure your cloud provider credentials:
+   ```bash
+   genesys config setup
+   ```
 
-## Requirements
+2. Start the interactive workflow:
+   ```bash
+   genesys interact
+   ```
 
-- Go 1.21 or higher
-- Cloud provider credentials and access
+3. List existing resources:
+   ```bash
+   genesys list resources
+   ```
 
-## Installation
+4. Execute a configuration:
+   ```bash
+   genesys execute config.yaml --dry-run
+   genesys execute config.yaml
+   ```
 
-```bash
-go get github.com/yourusername/genesys
-```
+## Key Features
 
-## Usage
-
-Basic usage instructions will be provided as the tool develops.
-
-## Configuration
-
-Configuration details for cloud providers and resources will be documented here.
+- Interactive provider and resource selection
+- YAML-based configuration management
+- Dry-run capability for safe previews
+- Multi-cloud provider support (AWS, GCP, Azure, Tencent)
+- Direct API integration for fast performance
+- Configuration-driven resource lifecycle management
 
 ## Supported Cloud Providers
 
-- AWS (planned)
-- Azure (planned)
-- Google Cloud Platform (planned)
-- Additional providers to be added
+- AWS (implemented with direct API calls)
+- GCP (configuration support)
+- Azure (configuration support) 
+- Tencent Cloud (configuration support)
 
 ## Project Structure
 
 ```
 genesys/
-├── cmd/           # Command line interface
-├── pkg/           # Core packages
-├── internal/      # Internal packages
-├── config/        # Configuration files
-└── tests/         # Test suite
+├── cmd/genesys/           # Main CLI application
+├── pkg/config/            # Configuration management
+├── pkg/provider/          # Cloud provider abstractions
+├── pkg/intent/            # Intent parsing
+├── pkg/planner/           # Resource planning
+├── docs/                  # Documentation
+└── examples/              # Example configurations
 ```
 
-## Development
+## Installation
 
-### Building from Source
+### From Source
 
 ```bash
-go build -o genesys cmd/main.go
+git clone <repository-url>
+cd genesys
+go build -o genesys ./cmd/genesys
 ```
 
-### Running Tests
+### Usage
 
-```bash
-go test ./tests/...
-```
+The tool provides several commands for managing cloud resources:
 
-## Contributing
-
-Contribution guidelines will be established as the project evolves.
-
-## License
-
-License information to be determined.
-
-## Roadmap
-
-- Initial architecture design
-- Core provider abstractions
-- AWS provider implementation
-- Azure provider implementation
-- GCP provider implementation
-- CLI interface development
-- Documentation and examples
-
-## Contact
-
-Project maintainer information to be added.
+- `genesys interact` - Interactive resource creation workflow
+- `genesys config` - Manage cloud provider credentials
+- `genesys execute` - Deploy or delete resources from configuration files
+- `genesys list` - Discover existing resources in your cloud account
+- `genesys version` - Show version information

@@ -1,6 +1,6 @@
 # Web application with auto-scaling
-provider = "aws"
-region = "us-east-1"
+# Example configuration for web application deployment
+# NOTE: Provider implementation removed - this is a template only
 
 [[resources.network]]
 name = "app-vpc"
@@ -11,25 +11,21 @@ tags = {Environment = "production", Team = "platform"}
 name = "public-1"
 cidr = "10.0.1.0/24"
 public = true
-az = "us-east-1a"
 
 [[resources.network.subnets]]
 name = "public-2"
 cidr = "10.0.2.0/24"
 public = true
-az = "us-east-1b"
 
 [[resources.network.subnets]]
 name = "private-1"
 cidr = "10.0.11.0/24"
 public = false
-az = "us-east-1a"
 
 [[resources.network.subnets]]
 name = "private-2"
 cidr = "10.0.12.0/24"
 public = false
-az = "us-east-1b"
 
 [[resources.compute]]
 name = "web-servers"
@@ -60,10 +56,6 @@ public_access = false
 [resources.storage.lifecycle]
 archive_after_days = 90
 delete_after_days = 365
-
-[state]
-backend = "s3"
-encrypt = true
 
 [policies]
 no_public_buckets = true

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/javanhut/genesys/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -11,9 +12,24 @@ import (
 func NewInteractCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "interact",
-		Short: "Start interactive mode",
-		Long:  `Start an interactive wizard to help you deploy infrastructure`,
-		RunE:  runInteract,
+		Short: "Interactive resource creation wizard",
+		Long: `Start an interactive wizard for cloud resource creation.
+
+This guided workflow will:
+  1. Select your cloud provider (AWS, GCP, Azure, Tencent)
+  2. Choose resource type (S3 Storage Bucket, Compute Instance, etc.)
+  3. Configure resource settings through step-by-step prompts
+  4. Generate YAML configuration file for deployment
+
+Example workflow:
+  genesys interact
+  # Follow prompts to create configuration
+  # Saves: s3-mybucket-1234567890.yaml
+  
+Next steps after interactive mode:
+  genesys execute s3-mybucket-*.yaml --dry-run   # Preview
+  genesys execute s3-mybucket-*.yaml             # Deploy`,
+		RunE: runInteract,
 	}
 }
 
@@ -22,235 +38,143 @@ func runInteract(cmd *cobra.Command, args []string) error {
 	fmt.Println("====================================")
 	fmt.Println()
 
-	// Select outcome
-	var outcome string
-	outcomePrompt := &survey.Select{
-		Message: "What would you like to deploy?",
+	// First, select cloud provider
+	var provider string
+	providerPrompt := &survey.Select{
+		Message: "Select cloud provider:",
 		Options: []string{
-			"Static Website",
+			"aws",
+			"gcp",
+			"azure",
+			"tencent",
+		},
+		Description: func(value string, index int) string {
+			switch value {
+			case "aws":
+				return "Amazon Web Services"
+			case "gcp":
+				return "Google Cloud Platform"
+			case "azure":
+				return "Microsoft Azure"
+			case "tencent":
+				return "Tencent Cloud"
+			default:
+				return ""
+			}
+		},
+	}
+	if err := survey.AskOne(providerPrompt, &provider); err != nil {
+		return err
+	}
+
+	// Then, select resource type
+	var resourceType string
+	resourcePrompt := &survey.Select{
+		Message: "What type of resource would you like to create?",
+		Options: []string{
+			"S3 Storage Bucket",
+			"Compute Instance", 
 			"Database",
-			"API Function",
-			"Network Infrastructure",
-			"Storage Bucket",
-			"Web Application",
+			"Function",
+			"Network",
 		},
 	}
-	if err := survey.AskOne(outcomePrompt, &outcome); err != nil {
+	if err := survey.AskOne(resourcePrompt, &resourceType); err != nil {
 		return err
 	}
 
-	// Based on outcome, gather specific parameters
-	switch outcome {
-	case "Static Website":
-		return interactStaticSite()
+	// Based on provider and resource type, start the specific workflow
+	switch resourceType {
+	case "S3 Storage Bucket":
+		return interactS3Bucket(provider)
+	case "Compute Instance":
+		return interactCompute(provider)
 	case "Database":
-		return interactDatabase()
-	case "API Function":
-		return interactFunction()
-	case "Storage Bucket":
-		return interactBucket()
+		return interactDatabase(provider)
+	case "Function":
+		return interactFunction(provider)
+	case "Network":
+		return interactNetwork(provider)
 	default:
-		fmt.Printf("Outcome '%s' not yet implemented\n", outcome)
+		fmt.Printf("Resource type '%s' not yet implemented for provider '%s'\n", resourceType, provider)
 	}
 
 	return nil
 }
 
-func interactStaticSite() error {
-	var params struct {
-		Domain    string
-		EnableCDN bool
-		EnableSSL bool
-	}
 
-	questions := []*survey.Question{
-		{
-			Name:     "Domain",
-			Prompt:   &survey.Input{Message: "Domain name (optional):"},
-			Validate: survey.Required,
-		},
-		{
-			Name:   "EnableCDN",
-			Prompt: &survey.Confirm{Message: "Enable CDN for global distribution?", Default: true},
-		},
-		{
-			Name:   "EnableSSL",
-			Prompt: &survey.Confirm{Message: "Enable HTTPS/SSL?", Default: true},
-		},
-	}
+// interactS3Bucket handles S3 bucket creation workflow
+func interactS3Bucket(provider string) error {
+	fmt.Printf("\n🪣 Creating S3 Bucket Configuration for %s\n", provider)
+	fmt.Println("==========================================")
+	fmt.Println()
 
-	if err := survey.Ask(questions, &params); err != nil {
+	// Check if provider is configured
+	if err := checkProviderConfig(provider); err != nil {
+		fmt.Printf("❌ Provider '%s' not configured. Run 'genesys config setup' first.\n", provider)
 		return err
 	}
 
-	// Generate and show plan
-	fmt.Println("\nPlan for Static Website Deployment")
-	fmt.Println("===================================")
-	fmt.Println("\nWhat will happen:")
-	fmt.Println("1. Create S3 bucket for hosting website files")
-	fmt.Println("2. Configure bucket for static website hosting")
-	if params.EnableCDN {
-		fmt.Println("3. Set up CloudFront CDN for fast global delivery")
-	}
-	if params.EnableSSL {
-		fmt.Println("4. Configure SSL certificate for HTTPS")
-	}
-	if params.Domain != "" {
-		fmt.Printf("5. Configure custom domain: %s\n", params.Domain)
+	// Use the existing S3 interactive configuration
+	s3Config, err := config.NewInteractiveS3Config()
+	if err != nil {
+		return fmt.Errorf("failed to initialize S3 configuration: %w", err)
 	}
 
-	fmt.Println("\nEstimated cost: ~$5-10/month")
-	fmt.Println("Time to deploy: ~3-5 minutes")
-
-	// Confirm apply
-	var applyConfirm bool
-	prompt := &survey.Confirm{
-		Message: "Would you like to apply these changes?",
-		Default: false,
-	}
-	if err := survey.AskOne(prompt, &applyConfirm); err != nil {
-		return err
+	// Generate configuration interactively
+	bucketConfig, fileName, err := s3Config.CreateBucketConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create bucket configuration: %w", err)
 	}
 
-	if applyConfirm {
-		fmt.Println("\nDeploying static website...")
-		fmt.Println("Note: Executor not yet implemented - this is a preview")
-	} else {
-		fmt.Println("\nPlan saved. You can apply it later.")
+	// Save configuration
+	filePath, err := s3Config.SaveConfig(bucketConfig, fileName)
+	if err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("✅ Configuration saved to: %s\n", filePath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Printf("  • Review the configuration: cat %s\n", fileName)
+	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", fileName)
+	fmt.Printf("  • Deploy the bucket: genesys execute %s\n", fileName)
+	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", fileName)
+
+	return nil
+}
+
+func checkProviderConfig(provider string) error {
+	interactiveConfig, err := config.NewInteractiveConfig()
+	if err != nil {
+		return fmt.Errorf("failed to initialize configuration: %w", err)
+	}
+
+	_, err = interactiveConfig.LoadProviderConfig(provider)
+	if err != nil {
+		return fmt.Errorf("provider '%s' not configured", provider)
 	}
 
 	return nil
 }
 
-func interactDatabase() error {
-	var params struct {
-		Engine   string
-		Size     string
-		MultiAZ  bool
-		Backups  bool
-	}
-
-	questions := []*survey.Question{
-		{
-			Name: "Engine",
-			Prompt: &survey.Select{
-				Message: "Database engine:",
-				Options: []string{"PostgreSQL", "MySQL", "MariaDB"},
-			},
-		},
-		{
-			Name: "Size",
-			Prompt: &survey.Select{
-				Message: "Database size:",
-				Options: []string{"Small (1-2 vCPU, 1-4 GB RAM)", "Medium (2-4 vCPU, 4-16 GB RAM)", "Large (4-8 vCPU, 16-64 GB RAM)"},
-			},
-		},
-		{
-			Name:   "MultiAZ",
-			Prompt: &survey.Confirm{Message: "Enable Multi-AZ for high availability?", Default: false},
-		},
-		{
-			Name:   "Backups",
-			Prompt: &survey.Confirm{Message: "Enable automated backups?", Default: true},
-		},
-	}
-
-	if err := survey.Ask(questions, &params); err != nil {
-		return err
-	}
-
-	fmt.Println("\nPlan for Database Deployment")
-	fmt.Println("=============================")
-	fmt.Printf("\nDatabase Engine: %s\n", params.Engine)
-	fmt.Printf("Size: %s\n", params.Size)
-	fmt.Printf("High Availability: %v\n", params.MultiAZ)
-	fmt.Printf("Automated Backups: %v\n", params.Backups)
-
+// Placeholder functions for other resource types
+func interactCompute(provider string) error {
+	fmt.Printf("Compute instance creation for %s not yet implemented\n", provider)
 	return nil
 }
 
-func interactFunction() error {
-	var params struct {
-		Runtime string
-		Trigger string
-		Memory  int
-	}
-
-	questions := []*survey.Question{
-		{
-			Name: "Runtime",
-			Prompt: &survey.Select{
-				Message: "Function runtime:",
-				Options: []string{"Python 3.11", "Node.js 18", "Go 1.21", "Java 17"},
-			},
-		},
-		{
-			Name: "Trigger",
-			Prompt: &survey.Select{
-				Message: "Trigger type:",
-				Options: []string{"HTTP/API", "Schedule", "Queue", "Storage"},
-			},
-		},
-		{
-			Name: "Memory",
-			Prompt: &survey.Select{
-				Message: "Memory allocation:",
-				Options: []string{"128 MB", "256 MB", "512 MB", "1024 MB"},
-			},
-		},
-	}
-
-	if err := survey.Ask(questions, &params); err != nil {
-		return err
-	}
-
-	fmt.Println("\nPlan for Function Deployment")
-	fmt.Println("=============================")
-	fmt.Printf("\nRuntime: %s\n", params.Runtime)
-	fmt.Printf("Trigger: %s\n", params.Trigger)
-	fmt.Printf("Memory: %d MB\n", params.Memory)
-
+func interactDatabase(provider string) error {
+	fmt.Printf("Database creation for %s not yet implemented\n", provider)
 	return nil
 }
 
-func interactBucket() error {
-	var params struct {
-		Name       string
-		Versioning bool
-		Encryption bool
-		PublicAccess bool
-	}
+func interactFunction(provider string) error {
+	fmt.Printf("Function creation for %s not yet implemented\n", provider)
+	return nil
+}
 
-	questions := []*survey.Question{
-		{
-			Name:     "Name",
-			Prompt:   &survey.Input{Message: "Bucket name:"},
-			Validate: survey.Required,
-		},
-		{
-			Name:   "Versioning",
-			Prompt: &survey.Confirm{Message: "Enable versioning?", Default: true},
-		},
-		{
-			Name:   "Encryption",
-			Prompt: &survey.Confirm{Message: "Enable encryption?", Default: true},
-		},
-		{
-			Name:   "PublicAccess",
-			Prompt: &survey.Confirm{Message: "Allow public access?", Default: false},
-		},
-	}
-
-	if err := survey.Ask(questions, &params); err != nil {
-		return err
-	}
-
-	fmt.Println("\nPlan for Storage Bucket")
-	fmt.Println("========================")
-	fmt.Printf("\nBucket name: %s\n", params.Name)
-	fmt.Printf("Versioning: %v\n", params.Versioning)
-	fmt.Printf("Encryption: %v\n", params.Encryption)
-	fmt.Printf("Public Access: %v\n", params.PublicAccess)
-
+func interactNetwork(provider string) error {
+	fmt.Printf("Network creation for %s not yet implemented\n", provider)
 	return nil
 }

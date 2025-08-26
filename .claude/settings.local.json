@@ -3,7 +3,20 @@
     "allow": [
       "Bash(go build:*)",
       "Bash(go test:*)",
-      "Bash(./genesys:*)"
+      "Bash(./genesys:*)",
+      "Bash(go get:*)",
+      "Bash(find:*)",
+      "Bash(time make:*)",
+      "Bash(timeout 30s go build -v -x ./cmd/genesys)",
+      "Bash(go list:*)",
+      "Bash(cp:*)",
+      "Bash(grep:*)",
+      "Bash(timeout:*)",
+      "Bash(go mod download:*)",
+      "Bash(go run:*)",
+      "Bash(go clean:*)",
+      "Bash(go mod:*)",
+      "Bash(go doc:*)"
     ],
     "deny": [],
     "ask": []

@@ -10,7 +10,7 @@ func TestLoadConfig_YAML(t *testing.T) {
 	// Create temporary YAML file
 	yamlContent := `
 provider: aws
-region: us-west-2
+region: us-east-1
 
 resources:
   compute:
@@ -44,8 +44,8 @@ policies:
 		t.Errorf("Expected provider 'aws', got '%s'", config.Provider)
 	}
 
-	if config.Region != "us-west-2" {
-		t.Errorf("Expected region 'us-west-2', got '%s'", config.Region)
+	if config.Region != "us-east-1" {
+		t.Errorf("Expected region 'us-east-1', got '%s'", config.Region)
 	}
 
 	// Test compute resources

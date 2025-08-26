@@ -1,39 +1,6 @@
 # Multi-cloud deployment example
 # Note: This shows how the same config could work across providers
 
-# AWS deployment
-provider: aws
-region: us-east-1
-
-resources:
-  compute:
-    - name: web-cluster
-      type: large
-      image: ubuntu-lts
-      count: 2
-      tags:
-        Environment: production
-        Provider: aws
-
-  storage:
-    - name: data-storage
-      type: bucket
-      versioning: true
-      encryption: true
-      tags:
-        Environment: production
-        Provider: aws
-
-  database:
-    - name: main-db
-      engine: postgres
-      version: "15"
-      size: medium
-      multi_az: true
-      tags:
-        Environment: production
-        Provider: aws
-
 ---
 # Same config for GCP (future)
 # provider: gcp

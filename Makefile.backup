@@ -1,0 +1,33 @@
+.PHONY: all build clean install uninstall test race
+
+# Installation directory
+PREFIX ?= /usr/local
+BINDIR = $(PREFIX)/bin
+
+# Default target
+all: build
+
+# Build the genesys binary
+build:
+	go build -o genesys ./cmd/genesys
+
+# Clean up binaries
+clean:
+	rm -f genesys
+
+# Install genesys to system
+install: build
+	install -d $(BINDIR)
+	install -m 755 genesys $(BINDIR)/genesys
+
+# Uninstall genesys from system
+uninstall:
+	rm -f $(BINDIR)/genesys
+
+# Run tests
+test:
+	go test ./...
+
+# Run with race detection
+race:
+	go build -race -o genesys ./cmd/genesys

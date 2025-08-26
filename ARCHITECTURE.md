@@ -10,15 +10,27 @@
 - `resources.go` - Universal resource models
 - `registry.go` - Provider registration and discovery
 - `mock.go` - Mock implementation for testing
-- `aws/` - AWS provider implementation (future)
-- `gcp/` - GCP provider implementation (future)
-- `azure/` - Azure provider implementation (future)
+- `aws/` - AWS provider implementation with direct API calls
+  - `client.go` - Direct HTTP client with signature v4 authentication
+  - `provider.go` - Main AWS provider implementation
+  - `storage.go` - S3 service implementation
+  - `compute.go` - EC2 service implementation
+  - `database.go` - RDS service implementation
+  - `network.go` - VPC service implementation
+  - `serverless.go` - Lambda service implementation
 
 #### Configuration Layer (`pkg/config/`)
 **Responsibility**: Configuration parsing and validation
 - `config.go` - YAML/TOML configuration parsing
 - `validation.go` - Configuration validation rules
 - `defaults.go` - Default value application
+- `interactive.go` - Interactive provider configuration
+- `interactive_aws.go` - AWS-specific interactive configuration
+- `interactive_gcp.go` - GCP-specific interactive configuration
+- `interactive_azure.go` - Azure-specific interactive configuration
+- `interactive_tencent.go` - Tencent Cloud interactive configuration
+- `interactive_storage.go` - Configuration storage and validation
+- `s3_interactive.go` - S3-specific interactive configuration
 
 #### Intent Layer (`pkg/intent/`)
 **Responsibility**: User intent parsing and interpretation
@@ -128,12 +140,88 @@ compute:
 # Azure: Standard_B2s with Ubuntu 22.04-LTS
 ```
 
-## Future Extensions
+## S3 Interactive Workflow
 
-### Phase 1: Real Providers
-- Implement AWS provider with real SDK calls
-- Add state management with S3/DynamoDB backend
-- Implement plan execution
+### Current Implementation
+
+The S3 workflow demonstrates the complete Genesys resource lifecycle:
+
+#### Interactive Configuration Generation
+```go
+// pkg/config/s3_interactive.go
+func (isc *InteractiveS3Config) CreateBucketConfig() (*S3BucketConfig, string, error)
+```
+- Guided prompts for bucket settings
+- Validation of bucket names and regions
+- Security-first defaults (encryption, no public access)
+- Automatic tagging with Environment, ManagedBy, Purpose
+- Lifecycle policy configuration
+
+#### Direct API Implementation
+```go
+// pkg/provider/aws/storage.go
+func (s *StorageService) CreateBucket(ctx context.Context, config *BucketConfig) (*Bucket, error)
+```
+- Direct HTTP calls to AWS S3 API
+- AWS Signature Version 4 authentication
+- No heavy SDK dependencies for fast builds
+- Complete bucket lifecycle management
+
+#### Configuration-Driven Execution
+```go
+// cmd/genesys/commands/execute.go
+func executeS3Config(ctx context.Context, configPath string) error
+```
+- YAML configuration file parsing
+- Dry-run capability for safe previews
+- Resource creation and deletion
+- Error handling and validation
+
+### Workflow Steps
+
+1. **Interactive Setup**: `genesys interact`
+   - Provider selection (aws, gcp, azure, tencent)
+   - Resource type selection (S3 Storage Bucket)
+   - Configuration through guided prompts
+   - YAML generation (s3-bucketname-timestamp.yaml)
+
+2. **Preview**: `genesys execute config.yaml --dry-run`
+   - Parse configuration file
+   - Display planned changes
+   - No actual resource creation
+
+3. **Deploy**: `genesys execute config.yaml`
+   - Validate AWS credentials
+   - Create S3 bucket with all settings
+   - Apply versioning, encryption, tags
+   - Configure lifecycle policies
+
+4. **List**: `genesys list --service storage`
+   - Discover existing S3 buckets
+   - Show bucket details and metadata
+
+5. **Delete**: `genesys execute deletion config.yaml`
+   - Remove bucket and all contents
+   - Clean resource cleanup
+
+## Implementation Status
+
+### Completed Features
+- **Interactive Configuration**: Full S3 bucket configuration wizard
+- **Multi-Cloud Credentials**: AWS, GCP, Azure, Tencent provider setup
+- **Direct API Integration**: AWS S3 without SDK dependencies
+- **YAML Configuration**: Complete resource specification
+- **Dry-Run Capability**: Safe preview before deployment
+- **Resource Discovery**: List existing buckets and resources
+- **Command Line Integration**: Comprehensive CLI with help text
+
+### Future Extensions
+
+### Phase 1: Additional Resources
+- Compute instances (EC2, GCE, Azure VMs)
+- Databases (RDS, Cloud SQL, Azure Database)
+- Serverless functions (Lambda, Cloud Functions, Azure Functions)
+- Networking (VPC, subnets, security groups)
 
 ### Phase 2: Multi-Cloud
 - Add GCP and Azure providers
