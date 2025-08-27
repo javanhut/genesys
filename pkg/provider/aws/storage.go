@@ -109,8 +109,9 @@ func (s *StorageService) GetBucket(ctx context.Context, name string) (*provider.
 	}
 
 	// Check if bucket exists by trying to get its location
-	endpoint := fmt.Sprintf("/%s?location", name)
-	resp, err := client.Request("GET", endpoint, nil, nil)
+	endpoint := fmt.Sprintf("/%s", name)
+	params := map[string]string{"location": ""}
+	resp, err := client.Request("GET", endpoint, params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get bucket location: %w", err)
 	}
@@ -242,9 +243,10 @@ func (s *StorageService) setBucketVersioning(client *AWSClient, bucketName strin
 	}
 
 	versioningXML := fmt.Sprintf(`<VersioningConfiguration><Status>%s</Status></VersioningConfiguration>`, status)
-	endpoint := fmt.Sprintf("/%s?versioning", bucketName)
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"versioning": ""}
 
-	resp, err := client.Request("PUT", endpoint, nil, []byte(versioningXML))
+	resp, err := client.Request("PUT", endpoint, params, []byte(versioningXML))
 	if err != nil {
 		return err
 	}
@@ -259,8 +261,9 @@ func (s *StorageService) setBucketVersioning(client *AWSClient, bucketName strin
 }
 
 func (s *StorageService) getBucketVersioning(client *AWSClient, bucketName string) (bool, error) {
-	endpoint := fmt.Sprintf("/%s?versioning", bucketName)
-	resp, err := client.Request("GET", endpoint, nil, nil)
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"versioning": ""}
+	resp, err := client.Request("GET", endpoint, params, nil)
 	if err != nil {
 		return false, err
 	}
@@ -287,9 +290,10 @@ func (s *StorageService) setBucketEncryption(client *AWSClient, bucketName strin
 		</Rule>
 	</ServerSideEncryptionConfiguration>`
 
-	endpoint := fmt.Sprintf("/%s?encryption", bucketName)
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"encryption": ""}
 
-	resp, err := client.Request("PUT", endpoint, nil, []byte(encryptionXML))
+	resp, err := client.Request("PUT", endpoint, params, []byte(encryptionXML))
 	if err != nil {
 		return err
 	}
@@ -304,8 +308,9 @@ func (s *StorageService) setBucketEncryption(client *AWSClient, bucketName strin
 }
 
 func (s *StorageService) getBucketEncryption(client *AWSClient, bucketName string) (bool, error) {
-	endpoint := fmt.Sprintf("/%s?encryption", bucketName)
-	resp, err := client.Request("GET", endpoint, nil, nil)
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"encryption": ""}
+	resp, err := client.Request("GET", endpoint, params, nil)
 	if err != nil {
 		return false, err
 	}
@@ -337,9 +342,11 @@ func (s *StorageService) setBucketTags(client *AWSClient, bucketName string, tag
 	
 	tagSetXML.WriteString("</TagSet></Tagging>")
 
-	endpoint := fmt.Sprintf("/%s?tagging", bucketName)
-
-	resp, err := client.Request("PUT", endpoint, nil, []byte(tagSetXML.String()))
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"tagging": ""}
+	
+	// S3 tagging requires Content-MD5 header, use RequestWithHeaders
+	resp, err := client.RequestWithMD5("PUT", endpoint, params, []byte(tagSetXML.String()))
 	if err != nil {
 		return err
 	}
@@ -354,8 +361,9 @@ func (s *StorageService) setBucketTags(client *AWSClient, bucketName string, tag
 }
 
 func (s *StorageService) getBucketTags(client *AWSClient, bucketName string) (map[string]string, error) {
-	endpoint := fmt.Sprintf("/%s?tagging", bucketName)
-	resp, err := client.Request("GET", endpoint, nil, nil)
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"tagging": ""}
+	resp, err := client.Request("GET", endpoint, params, nil)
 	if err != nil {
 		return nil, err
 	}
