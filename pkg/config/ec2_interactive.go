@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/BurntSushi/toml"
+	"github.com/javanhut/genesys/pkg/provider/aws"
+	"github.com/javanhut/genesys/pkg/state"
 )
 
 // EC2ComputeResource represents a compute resource configuration
@@ -48,6 +51,16 @@ type EC2InstanceConfig struct {
 		NoPublicInstances bool     `yaml:"no_public_instances" toml:"no_public_instances"`
 		RequireTags       []string `yaml:"require_tags,omitempty" toml:"require_tags,omitempty"`
 	} `yaml:"policies" toml:"policies"`
+	
+	AMILookup *EC2AMILookupConfig `yaml:"ami_lookup,omitempty" toml:"ami_lookup,omitempty"`
+}
+
+// EC2AMILookupConfig controls AMI resolution behavior
+type EC2AMILookupConfig struct {
+	Strategy       string `yaml:"strategy,omitempty" toml:"strategy,omitempty"`             // "auto", "ssm", "describe", "static"
+	DisableCache   bool   `yaml:"disable_cache,omitempty" toml:"disable_cache,omitempty"`   // Disable AMI caching
+	CacheTTLHours  int    `yaml:"cache_ttl_hours,omitempty" toml:"cache_ttl_hours,omitempty"` // Cache TTL in hours (default 24)
+	FallbackToStatic bool `yaml:"fallback_to_static,omitempty" toml:"fallback_to_static,omitempty"` // Allow fallback to static mappings
 }
 
 // InteractiveEC2Config manages interactive EC2 instance configuration
@@ -115,7 +128,7 @@ func (iec *InteractiveEC2Config) getInstanceName() (string, error) {
 	var instanceName string
 	prompt := &survey.Input{
 		Message: "Instance name:",
-		Help:    "A friendly name for your EC2 instance",
+		Help:    "A friendly name for your EC2 instance (must be unique)",
 		Default: "my-ec2-instance",
 	}
 	
@@ -127,6 +140,12 @@ func (iec *InteractiveEC2Config) getInstanceName() (string, error) {
 		if len(str) > 255 {
 			return fmt.Errorf("instance name must be less than 256 characters")
 		}
+		
+		// Check for existing instances with the same name
+		if err := iec.validateUniqueName(str); err != nil {
+			return err
+		}
+		
 		return nil
 	}
 
@@ -185,7 +204,11 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 
 	// Instance type
 	instanceTypes := []string{
-		"small (t3.small - 2 vCPU, 2GB RAM) ~ $15/month",
+		"t3.micro (t3.micro - 2 vCPU, 1GB RAM) ~ FREE TIER - $0/month for first year", 
+		"small (t3.small - 2 vCPU, 2GB RAM) ~ FREE TIER - $0/month for first year",
+		"c7i-flex.large (c7i-flex.large - 2 vCPU, 4GB RAM) ~ FREE TIER - $0/month for first year",
+		"m7i-flex.large (m7i-flex.large - 2 vCPU, 8GB RAM) ~ FREE TIER - $0/month for first year",
+		"t2.micro (t2.micro - 1 vCPU, 1GB RAM) ~ $8/month",
 		"medium (t3.medium - 2 vCPU, 4GB RAM) ~ $30/month",  
 		"large (t3.large - 2 vCPU, 8GB RAM) ~ $60/month",
 		"xlarge (t3.xlarge - 4 vCPU, 16GB RAM) ~ $120/month",
@@ -195,8 +218,8 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 	typePrompt := &survey.Select{
 		Message: "Select instance type:",
 		Options: instanceTypes,
-		Default: instanceTypes[1], // medium
-		Help:    "Estimated costs shown are for us-east-1 region, 24/7 usage",
+		Default: instanceTypes[0], // Default to Free Tier t2.micro
+		Help:    "Free Tier options available for new AWS accounts (750 hours/month for first year). Estimated costs shown are for us-east-1 region, 24/7 usage",
 	}
 	if err := survey.AskOne(typePrompt, &selectedType); err != nil {
 		return config, err
@@ -541,6 +564,90 @@ func (iec *InteractiveEC2Config) getTags() (map[string]string, error) {
 	}
 
 	return tags, nil
+}
+
+// validateUniqueName checks if an EC2 instance name is already in use
+func (iec *InteractiveEC2Config) validateUniqueName(name string) error {
+	// Basic name validation first
+	if name == "" {
+		return fmt.Errorf("instance name cannot be empty")
+	}
+	
+	if strings.Contains(name, " ") {
+		return fmt.Errorf("instance name cannot contain spaces")
+	}
+	
+	// Check local state first (fastest check)
+	if err := iec.checkLocalState(name); err != nil {
+		return err
+	}
+	
+	// Check AWS for existing instances with the same Name tag
+	if err := iec.checkAWSInstances(name); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
+// checkLocalState checks if name exists in local state
+func (iec *InteractiveEC2Config) checkLocalState(name string) error {
+	localState, err := state.LoadLocalState()
+	if err != nil {
+		// If we can't load local state, continue with AWS check
+		return nil
+	}
+	
+	// Check if any existing resource has this name
+	for _, resource := range localState.Resources {
+		if resource.Type == "ec2" && resource.Name == name {
+			return fmt.Errorf("instance name '%s' already exists (created %s)", name, resource.CreatedAt.Format("2006-01-02 15:04"))
+		}
+	}
+	
+	return nil
+}
+
+// checkAWSInstances checks if name exists in AWS (running or stopped instances)
+func (iec *InteractiveEC2Config) checkAWSInstances(name string) error {
+	// Get region first
+	region, err := iec.getRegion()
+	if err != nil {
+		// If we can't determine region, allow the name but don't block
+		return nil
+	}
+	
+	// Create AWS provider to check existing instances
+	provider, err := aws.NewAWSProvider(region)
+	if err != nil {
+		// If we can't connect to AWS, allow the name but warn
+		return nil
+	}
+	
+	computeService := provider.Compute()
+	
+	// Search for instances with this Name tag
+	ctx := context.Background()
+	instances, err := computeService.ListInstances(ctx, map[string]string{
+		"tag:Name": name,
+		"instance-state-name": "running,stopped,stopping,pending",
+	})
+	
+	if err != nil {
+		// If we can't query AWS, allow the name but don't block
+		return nil
+	}
+	
+	if len(instances) > 0 {
+		states := make([]string, len(instances))
+		for i, instance := range instances {
+			states[i] = instance.State
+		}
+		return fmt.Errorf("instance name '%s' already exists in AWS (%d instance(s): %s)", 
+			name, len(instances), strings.Join(states, ", "))
+	}
+	
+	return nil
 }
 
 // SaveConfig saves the EC2 instance configuration to a file

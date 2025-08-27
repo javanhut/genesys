@@ -12,7 +12,8 @@ import (
 
 // ComputeService implements AWS EC2 operations using direct API calls
 type ComputeService struct {
-	provider *AWSProvider
+	provider    *AWSProvider
+	amiResolver *AMIResolver
 }
 
 // NewComputeService creates a new compute service
@@ -22,12 +23,22 @@ func NewComputeService(p *AWSProvider) *ComputeService {
 	}
 }
 
+// initAMIResolver initializes the AMI resolver if not already done
+func (c *ComputeService) initAMIResolver() error {
+	if c.amiResolver != nil {
+		return nil
+	}
+
+	c.amiResolver = NewAMIResolver(c.provider, c.provider.region)
+	return nil
+}
+
 // EC2 API response structures
 type RunInstancesResponse struct {
 	XMLName   xml.Name `xml:"RunInstancesResponse"`
 	Instances struct {
 		Items []EC2Instance `xml:"item"`
-	} `xml:"instances"`
+	} `xml:"instancesSet"`
 }
 
 type DescribeInstancesResponse struct {
@@ -57,6 +68,60 @@ type EC2Instance struct {
 	} `xml:"tagSet"`
 }
 
+// EC2Error represents an EC2 API error response
+type EC2Error struct {
+	XMLName xml.Name `xml:"Response"`
+	Errors  struct {
+		Error []struct {
+			Code    string `xml:"Code"`
+			Message string `xml:"Message"`
+		} `xml:"Error"`
+	} `xml:"Errors"`
+	RequestID string `xml:"RequestID"`
+}
+
+// parseEC2Error extracts a clean error message from EC2 XML error response
+func parseEC2Error(responseBody []byte) string {
+	var ec2Err EC2Error
+	if err := xml.Unmarshal(responseBody, &ec2Err); err != nil {
+		// If we can't parse the XML, return the raw response
+		return string(responseBody)
+	}
+	
+	// Return a clean, user-friendly error message
+	if len(ec2Err.Errors.Error) > 0 {
+		firstError := ec2Err.Errors.Error[0]
+		if firstError.Code != "" && firstError.Message != "" {
+			return fmt.Sprintf("%s: %s", firstError.Code, firstError.Message)
+		}
+		if firstError.Message != "" {
+			return firstError.Message
+		}
+	}
+	
+	// Last resort fallback
+	return string(responseBody)
+}
+
+// isValidAMIID checks if an AMI ID has the correct format
+func isValidAMIID(amiID string) bool {
+	// AMI IDs should start with "ami-" and be followed by 17 hex characters (total length 21)
+	if len(amiID) != 21 {
+		return false
+	}
+	if !strings.HasPrefix(amiID, "ami-") {
+		return false
+	}
+	// Check if the remaining 17 characters are valid hex
+	suffix := amiID[4:]
+	for _, char := range suffix {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // CreateInstance creates a new EC2 instance
 func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.InstanceConfig) (*provider.Instance, error) {
 	client, err := c.provider.CreateClient("ec2")
@@ -67,32 +132,39 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 	// Map instance types
 	instanceType := c.mapInstanceType(string(config.Type))
 	
-	// Get AMI ID for the image
-	amiId, err := c.getAMIForImage(client, config.Image)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get AMI for image %s: %w", config.Image, err)
+	// Initialize AMI resolver
+	if err := c.initAMIResolver(); err != nil {
+		return nil, fmt.Errorf("failed to initialize AMI resolver: %w", err)
 	}
 
-	// Build parameters
+	// Get AMI ID using dynamic resolution
+	amiId, err := c.amiResolver.ResolveAMI(ctx, config.Image)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve AMI for image %s: %w", config.Image, err)
+	}
+
+	// Build parameters (default to 1 instance for now)
 	params := map[string]string{
 		"Action":       "RunInstances",
 		"Version":      "2016-11-15",
 		"ImageId":      amiId,
-		"MinCount":     "1", // Default to 1 instance
-		"MaxCount":     "1", // Default to 1 instance  
+		"MinCount":     "1",
+		"MaxCount":     "1",
 		"InstanceType": instanceType,
 	}
 
-	// Add tags
+	// Add tags (always include Name tag, so we always have at least one tag)
+	params[fmt.Sprintf("TagSpecification.1.ResourceType")] = "instance"
 	tagIndex := 1
+	
+	// Add user-defined tags
 	for key, value := range config.Tags {
-		params[fmt.Sprintf("TagSpecification.1.ResourceType")] = "instance"
 		params[fmt.Sprintf("TagSpecification.1.Tag.%d.Key", tagIndex)] = key
 		params[fmt.Sprintf("TagSpecification.1.Tag.%d.Value", tagIndex)] = value
 		tagIndex++
 	}
 
-	// Add Name tag
+	// Add Name tag (always present)
 	params[fmt.Sprintf("TagSpecification.1.Tag.%d.Key", tagIndex)] = "Name"
 	params[fmt.Sprintf("TagSpecification.1.Tag.%d.Value", tagIndex)] = config.Name
 
@@ -105,7 +177,8 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 
 	if resp.StatusCode != 200 {
 		body, _ := ReadResponse(resp)
-		return nil, fmt.Errorf("RunInstances failed with status %d: %s", resp.StatusCode, string(body))
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("RunInstances failed: %s", cleanError)
 	}
 
 	// Parse response
@@ -116,11 +189,15 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 
 	var runResp RunInstancesResponse
 	if err := xml.Unmarshal(body, &runResp); err != nil {
+		// Debug: print the raw response to understand the structure
+		fmt.Printf("DEBUG: Failed to parse RunInstances response. Raw response:\n%s\n", string(body))
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(runResp.Instances.Items) == 0 {
-		return nil, fmt.Errorf("no instances created")
+		// Debug: print what we actually got
+		fmt.Printf("DEBUG: RunInstances response parsed but no instances found. Response structure: %+v\n", runResp)
+		return nil, fmt.Errorf("no instances created - response parsed but instances list is empty")
 	}
 
 	// Convert to provider instance
@@ -149,7 +226,8 @@ func (c *ComputeService) GetInstance(ctx context.Context, id string) (*provider.
 
 	if resp.StatusCode != 200 {
 		body, _ := ReadResponse(resp)
-		return nil, fmt.Errorf("DescribeInstances failed with status %d: %s", resp.StatusCode, string(body))
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeInstances failed: %s", cleanError)
 	}
 
 	body, err := ReadResponse(resp)
@@ -202,7 +280,8 @@ func (c *ComputeService) UpdateInstance(ctx context.Context, id string, config *
 
 	if resp.StatusCode != 200 {
 		body, _ := ReadResponse(resp)
-		return fmt.Errorf("CreateTags failed with status %d: %s", resp.StatusCode, string(body))
+		cleanError := parseEC2Error(body)
+		return fmt.Errorf("CreateTags failed: %s", cleanError)
 	}
 
 	return nil
@@ -229,7 +308,8 @@ func (c *ComputeService) DeleteInstance(ctx context.Context, id string) error {
 
 	if resp.StatusCode != 200 {
 		body, _ := ReadResponse(resp)
-		return fmt.Errorf("TerminateInstances failed with status %d: %s", resp.StatusCode, string(body))
+		cleanError := parseEC2Error(body)
+		return fmt.Errorf("TerminateInstances failed: %s", cleanError)
 	}
 
 	return nil
@@ -263,7 +343,8 @@ func (c *ComputeService) ListInstances(ctx context.Context, filters map[string]s
 
 	if resp.StatusCode != 200 {
 		body, _ := ReadResponse(resp)
-		return nil, fmt.Errorf("DescribeInstances failed with status %d: %s", resp.StatusCode, string(body))
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeInstances failed: %s", cleanError)
 	}
 
 	body, err := ReadResponse(resp)
@@ -310,24 +391,38 @@ func (c *ComputeService) mapInstanceType(instanceType string) string {
 		return "t3.large"
 	case "xlarge":
 		return "t3.xlarge"
+	// Free Tier eligible instance types
+	case "t2.micro":
+		return "t2.micro"
+	case "t2.small":
+		return "t2.small"
+	case "t3.micro":
+		return "t3.micro"
+	case "t3.nano":
+		return "t3.nano"
+	case "c7i-flex.large":
+		return "c7i-flex.large"
+	case "m7i-flex.large":
+		return "m7i-flex.large"
 	default:
-		return "t3.medium"
+		return "t3.micro" // Default to Free Tier
 	}
 }
 
 func (c *ComputeService) getAMIForImage(client *AWSClient, image string) (string, error) {
-	// Default AMIs for common images in us-east-1
-	switch image {
-	case "ubuntu-lts", "ubuntu":
-		return "ami-0c02fb55956c7d316", nil // Ubuntu 20.04 LTS
-	case "amazon-linux", "amzn2":
-		return "ami-0abcdef1234567890", nil // Amazon Linux 2
-	case "centos":
-		return "ami-0d5eff06f840b45e9", nil // CentOS 7
-	default:
-		// Return Ubuntu as default
-		return "ami-0c02fb55956c7d316", nil
+	// Initialize AMI resolver if not already done
+	if err := c.initAMIResolver(); err != nil {
+		return "", fmt.Errorf("failed to initialize AMI resolver: %w", err)
 	}
+
+	// Use the AMI resolver for dynamic lookup
+	ctx := context.Background()
+	amiID, err := c.amiResolver.ResolveAMI(ctx, image)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve AMI for image '%s': %w", image, err)
+	}
+
+	return amiID, nil
 }
 
 func (c *ComputeService) convertToProviderInstance(ec2Instance EC2Instance) *provider.Instance {

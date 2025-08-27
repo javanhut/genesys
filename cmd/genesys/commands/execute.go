@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/javanhut/genesys/pkg/config"
@@ -13,6 +14,7 @@ import (
 	"github.com/javanhut/genesys/pkg/provider"
 	providerTypes "github.com/javanhut/genesys/pkg/provider"
 	"github.com/javanhut/genesys/pkg/provider/aws"
+	"github.com/javanhut/genesys/pkg/state"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -462,75 +464,7 @@ func executeEC2Config(ctx context.Context, configPath string) error {
 	instanceName := ec2Config.Resources.Compute[0].Name
 	
 	if dryRunFlag {
-		fmt.Printf("================================================================================\n")
-		fmt.Printf("DRY RUN: EC2 Instance Creation Plan\n")
-		fmt.Printf("Configuration: %s\n", configPath)
-		fmt.Printf("================================================================================\n\n")
-		
-		fmt.Printf("RESOURCE TO CREATE:\n")
-		fmt.Printf("  Type:         AWS EC2 Instance\n")
-		fmt.Printf("  Name:         %s\n", instanceName)
-		fmt.Printf("  Region:       %s\n", ec2Config.Region)
-		fmt.Printf("  Instance Type: %s\n", ec2Config.Resources.Compute[0].Type)
-		fmt.Printf("  AMI:          %s\n", ec2Config.Resources.Compute[0].Image)
-		
-		fmt.Printf("\nCONFIGURATION DETAILS:\n")
-		fmt.Printf("  Public IP:    %s\n", formatBool(ec2Config.Resources.Compute[0].PublicIP, "Assigned", "None"))
-		if ec2Config.Resources.Compute[0].KeyPair != "" {
-			fmt.Printf("  Key Pair:     %s\n", ec2Config.Resources.Compute[0].KeyPair)
-		}
-		if ec2Config.Resources.Compute[0].Storage != nil {
-			fmt.Printf("  Storage Size: %d GB\n", ec2Config.Resources.Compute[0].Storage.Size)
-			fmt.Printf("  Volume Type:  %s\n", ec2Config.Resources.Compute[0].Storage.VolumeType)
-			fmt.Printf("  Encrypted:    %s\n", formatBool(ec2Config.Resources.Compute[0].Storage.Encrypted, "Yes", "No"))
-		}
-		
-		if len(ec2Config.Resources.Compute[0].Tags) > 0 {
-			fmt.Printf("\nRESOURCE TAGS:\n")
-			for k, v := range ec2Config.Resources.Compute[0].Tags {
-				fmt.Printf("  %-15s: %s\n", k, v)
-			}
-		}
-		
-		if ec2Config.Resources.Compute[0].UserData != "" {
-			fmt.Printf("\nUSER DATA SCRIPT:\n")
-			lines := strings.Split(ec2Config.Resources.Compute[0].UserData, "\n")
-			for i, line := range lines {
-				if i > 5 {
-					fmt.Printf("  ... (truncated, %d more lines)\n", len(lines)-i)
-					break
-				}
-				if line != "" {
-					fmt.Printf("  %s\n", line)
-				}
-			}
-		}
-		
-		fmt.Printf("\nACTIONS THAT WOULD BE PERFORMED:\n")
-		fmt.Printf("  1. Launch EC2 instance '%s' in region %s\n", instanceName, ec2Config.Region)
-		fmt.Printf("  2. Configure instance with type %s\n", ec2Config.Resources.Compute[0].Type)
-		if ec2Config.Resources.Compute[0].PublicIP {
-			fmt.Printf("  3. Assign public IP address\n")
-		}
-		if len(ec2Config.Resources.Compute[0].Tags) > 0 {
-			fmt.Printf("  4. Apply %d tags to the instance\n", len(ec2Config.Resources.Compute[0].Tags))
-		}
-		if ec2Config.Resources.Compute[0].UserData != "" {
-			fmt.Printf("  5. Execute startup script on first boot\n")
-		}
-		
-		// Add cost estimate to dry run
-		fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
-		if estimate, err := config.EstimateEC2Costs(ec2Config.Resources.Compute[0], ec2Config.Region); err == nil {
-			fmt.Println(estimate.FormatCostEstimate())
-		} else {
-			fmt.Printf("Cost estimate unavailable: %v\n", err)
-		}
-		fmt.Printf(strings.Repeat("=", 80) + "\n")
-		
-		fmt.Printf("No actual changes will be made. Use --apply to create the resources.\n")
-		fmt.Printf("================================================================================\n")
-		return nil
+		return performEC2DryRun(ctx, configPath, ec2Config)
 	}
 
 	fmt.Printf("================================================================================\n")
@@ -581,6 +515,29 @@ func executeEC2Config(ctx context.Context, configPath string) error {
 		return fmt.Errorf("failed to create EC2 instance: %w", err)
 	}
 
+	// Store in local state for tracking
+	localState, err := state.LoadLocalState()
+	if err != nil {
+		fmt.Printf("Warning: Failed to load local state: %v\n", err)
+	} else {
+		record := state.ResourceRecord{
+			ID:         instance.ID,
+			Name:       instance.Name,
+			Type:       "ec2",
+			Region:     ec2Config.Region,
+			Provider:   ec2Config.Provider,
+			ConfigFile: configPath,
+			CreatedAt:  time.Now(),
+			Tags:       instanceResource.Tags,
+		}
+		
+		if err := localState.AddResource(record); err != nil {
+			fmt.Printf("Warning: Failed to save instance to local state: %v\n", err)
+		} else {
+			fmt.Printf("Instance tracked in local state: %s\n", instance.ID)
+		}
+	}
+
 	fmt.Printf("================================================================================\n")
 	fmt.Printf("SUCCESS: EC2 Instance Created\n")
 	fmt.Printf("================================================================================\n\n")
@@ -604,7 +561,7 @@ func executeEC2Config(ctx context.Context, configPath string) error {
 	}
 	
 	// Add cost information to deployment output
-	fmt.Printf("\n" + strings.Repeat("-", 50) + "\n")
+	fmt.Printf("\n%s\n", strings.Repeat("-", 50))
 	if estimate, err := config.EstimateEC2Costs(ec2Config.Resources.Compute[0], ec2Config.Region); err == nil {
 		fmt.Printf("ESTIMATED COSTS:\n")
 		fmt.Printf("  Monthly Cost: $%.2f/month ($%.4f/hour)\n", estimate.TotalMonthlyCost, estimate.HourlyRate)
@@ -618,7 +575,7 @@ func executeEC2Config(ctx context.Context, configPath string) error {
 			fmt.Printf("  LOW COST: Cost-effective choice\n")
 		}
 	}
-	fmt.Printf(strings.Repeat("-", 50) + "\n")
+	fmt.Printf("%s\n", strings.Repeat("-", 50))
 	
 	fmt.Printf("\nNEXT STEPS:\n")
 	fmt.Printf("  • View instance status: aws ec2 describe-instances --instance-ids %s\n", instance.ID)
@@ -843,8 +800,52 @@ func executeEC2Deletion(ctx context.Context, configPath string) error {
 	}
 
 	if len(instances) == 0 {
-		fmt.Printf("No instances found with Name tag '%s'. Nothing to delete.\n", instanceName)
+		fmt.Printf("No instances found with Name tag '%s'.\n", instanceName)
+		
+		// Try to find instances from local state as fallback
+		localState, err := state.LoadLocalState()
+		if err == nil {
+			stateInstances := localState.FindResourcesByConfigFile(configPath)
+			if len(stateInstances) > 0 {
+				fmt.Printf("Found %d instance(s) in local state for this config file:\n", len(stateInstances))
+				for _, record := range stateInstances {
+					fmt.Printf("  - %s (ID: %s, Created: %s)\n", record.Name, record.ID, record.CreatedAt.Format("2006-01-02 15:04:05"))
+				}
+				
+				fmt.Printf("\nAttempting to delete instances found in local state...\n")
+				
+				// Try to delete each instance by ID
+				for _, record := range stateInstances {
+					fmt.Printf("Terminating instance from local state: %s\n", record.ID)
+					
+					if err := computeService.DeleteInstance(ctx, record.ID); err != nil {
+						fmt.Printf("Warning: Failed to terminate instance %s: %v\n", record.ID, err)
+						continue
+					}
+					
+					// Remove from local state
+					if err := localState.RemoveResource(record.ID); err != nil {
+						fmt.Printf("Warning: Failed to remove %s from local state: %v\n", record.ID, err)
+					} else {
+						fmt.Printf("Removed %s from local state tracking\n", record.ID)
+					}
+				}
+				
+				fmt.Printf("\n================================================================================\n")
+				fmt.Printf("SUCCESS: EC2 Instance(s) Terminated from Local State\n")
+				fmt.Printf("================================================================================\n")
+				return nil
+			}
+		}
+		
+		fmt.Printf("No instances found in AWS or local state. Nothing to delete.\n")
 		return nil
+	}
+
+	// Load local state to update it
+	localState, err := state.LoadLocalState()
+	if err != nil {
+		fmt.Printf("Warning: Failed to load local state: %v\n", err)
 	}
 
 	// Delete all matching instances
@@ -853,6 +854,15 @@ func executeEC2Deletion(ctx context.Context, configPath string) error {
 		
 		if err := computeService.DeleteInstance(ctx, instance.ID); err != nil {
 			return fmt.Errorf("failed to terminate instance %s: %w", instance.ID, err)
+		}
+		
+		// Remove from local state
+		if localState != nil {
+			if err := localState.RemoveResource(instance.ID); err != nil {
+				fmt.Printf("Warning: Failed to remove %s from local state: %v\n", instance.ID, err)
+			} else {
+				fmt.Printf("Removed %s from local state tracking\n", instance.ID)
+			}
 		}
 	}
 
@@ -871,6 +881,203 @@ func executeEC2Deletion(ctx context.Context, configPath string) error {
 	fmt.Printf("\nThe instance(s) are now terminating and will be permanently removed.\n")
 	fmt.Printf("Associated EBS volumes may be deleted based on their configuration.\n")
 	fmt.Printf("\n================================================================================\n")
+	return nil
+}
+
+// performEC2DryRun performs actual AWS API validation for EC2 dry-run
+func performEC2DryRun(ctx context.Context, configPath string, ec2Config config.EC2InstanceConfig) error {
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("DRY RUN: EC2 Instance Creation Plan\n")
+	fmt.Printf("Configuration: %s\n", configPath)
+	fmt.Printf("================================================================================\n\n")
+	
+	instanceName := ec2Config.Resources.Compute[0].Name
+	
+	fmt.Printf("RESOURCE TO CREATE:\n")
+	fmt.Printf("  Type:         AWS EC2 Instance\n")
+	fmt.Printf("  Name:         %s\n", instanceName)
+	fmt.Printf("  Region:       %s\n", ec2Config.Region)
+	fmt.Printf("  Instance Type: %s\n", ec2Config.Resources.Compute[0].Type)
+	fmt.Printf("  AMI:          %s\n", ec2Config.Resources.Compute[0].Image)
+	
+	fmt.Printf("\nVALIDATION RESULTS:\n")
+	validationErrors := []string{}
+	
+	// Create AWS provider to validate
+	provider, err := aws.NewAWSProvider(ec2Config.Region)
+	if err != nil {
+		validationErrors = append(validationErrors, fmt.Sprintf("AWS Provider: Failed to initialize (%v)", err))
+	} else {
+		fmt.Printf("  ✓ AWS Provider: Initialized successfully\n")
+		
+		// Validate credentials
+		computeService := provider.Compute()
+		
+		// Test credentials by trying to list instances (this validates auth)
+		fmt.Printf("  → Testing AWS credentials...\n")
+		_, err := computeService.ListInstances(ctx, map[string]string{})
+		if err != nil {
+			validationErrors = append(validationErrors, fmt.Sprintf("AWS Credentials: Invalid or insufficient permissions (%v)", err))
+		} else {
+			fmt.Printf("  ✓ AWS Credentials: Valid and authenticated\n")
+		}
+		
+		// Validate AMI
+		fmt.Printf("  → Resolving and validating AMI...\n")
+		
+		// Initialize AMI resolver
+		if computeService := provider.Compute(); computeService != nil {
+			// Use reflection to access private method - let's use the actual creation flow
+			amiID, err := validateAMIAccess(ctx, provider, ec2Config.Resources.Compute[0].Image, ec2Config.Region)
+			if err != nil {
+				validationErrors = append(validationErrors, fmt.Sprintf("AMI Resolution: %v", err))
+			} else {
+				fmt.Printf("  ✓ AMI: Resolved to %s and accessible\n", amiID)
+			}
+		}
+		
+		// Validate instance type (simplified check for known types)
+		fmt.Printf("  → Validating instance type...\n")
+		instanceType := ec2Config.Resources.Compute[0].Type
+		knownTypes := []string{"t2.micro", "t3.micro", "t3.nano", "t3.small", "t3.medium", "t3.large", "t3.xlarge", "c7i-flex.large", "m7i-flex.large", "small", "medium", "large", "xlarge"}
+		isKnownType := false
+		for _, kt := range knownTypes {
+			if instanceType == kt {
+				isKnownType = true
+				break
+			}
+		}
+		if !isKnownType {
+			validationErrors = append(validationErrors, fmt.Sprintf("Instance Type: '%s' is not a recognized instance type", instanceType))
+		} else {
+			fmt.Printf("  ✓ Instance Type: %s is a valid instance type\n", instanceType)
+		}
+	}
+	
+	// Show configuration details
+	fmt.Printf("\nCONFIGURATION DETAILS:\n")
+	fmt.Printf("  Public IP:    %s\n", formatBool(ec2Config.Resources.Compute[0].PublicIP, "Assigned", "None"))
+	if ec2Config.Resources.Compute[0].KeyPair != "" {
+		fmt.Printf("  Key Pair:     %s\n", ec2Config.Resources.Compute[0].KeyPair)
+	}
+	if ec2Config.Resources.Compute[0].Storage != nil {
+		fmt.Printf("  Storage Size: %d GB\n", ec2Config.Resources.Compute[0].Storage.Size)
+		fmt.Printf("  Volume Type:  %s\n", ec2Config.Resources.Compute[0].Storage.VolumeType)
+		fmt.Printf("  Encrypted:    %s\n", formatBool(ec2Config.Resources.Compute[0].Storage.Encrypted, "Yes", "No"))
+	}
+	
+	if len(ec2Config.Resources.Compute[0].Tags) > 0 {
+		fmt.Printf("\nRESOURCE TAGS:\n")
+		for k, v := range ec2Config.Resources.Compute[0].Tags {
+			fmt.Printf("  %-15s: %s\n", k, v)
+		}
+	}
+	
+	// Show validation summary
+	fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
+	if len(validationErrors) == 0 {
+		fmt.Printf("VALIDATION STATUS: ✓ ALL CHECKS PASSED\n")
+		fmt.Printf("This configuration is ready for deployment.\n")
+	} else {
+		fmt.Printf("VALIDATION STATUS: ✗ %d ERROR(S) FOUND\n", len(validationErrors))
+		fmt.Printf("The following issues must be resolved before deployment:\n")
+		for i, err := range validationErrors {
+			fmt.Printf("  %d. %s\n", i+1, err)
+		}
+	}
+	
+	// Add cost estimate
+	fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
+	if estimate, err := config.EstimateEC2Costs(ec2Config.Resources.Compute[0], ec2Config.Region); err == nil {
+		fmt.Println(estimate.FormatCostEstimate())
+	} else {
+		fmt.Printf("Cost estimate unavailable: %v\n", err)
+	}
+	
+	fmt.Printf(strings.Repeat("=", 80) + "\n")
+	if len(validationErrors) == 0 {
+		fmt.Printf("Ready to deploy! Use --apply to create the resources.\n")
+	} else {
+		fmt.Printf("Fix the validation errors above, then try again.\n")
+	}
+	fmt.Printf("================================================================================\n")
+	
+	return nil
+}
+
+// validateAMIAccess validates that the AMI can be resolved and is accessible
+func validateAMIAccess(ctx context.Context, provider *aws.AWSProvider, image, region string) (string, error) {
+	client, err := provider.CreateClient("ec2")
+	if err != nil {
+		return "", fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+	
+	resolver := aws.NewAMIResolver(provider, region)
+	amiID, err := resolver.ResolveAMI(ctx, image)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve AMI '%s': %w", image, err)
+	}
+	
+	// Additional validation: verify the AMI exists and is accessible
+	params := map[string]string{
+		"Action":    "DescribeImages",
+		"ImageId.1": amiID,
+	}
+	
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to validate AMI access: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("AMI %s not accessible (status: %d)", amiID, resp.StatusCode)
+	}
+	
+	return amiID, nil
+}
+
+// validateInstanceType validates that the instance type is available in the region
+func validateInstanceType(ctx context.Context, provider *aws.AWSProvider, instanceType, region string) error {
+	client, err := provider.CreateClient("ec2")
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+	
+	// Map the friendly name to AWS instance type
+	var actualInstanceType string
+	switch instanceType {
+	case "small":
+		actualInstanceType = "t3.small"
+	case "medium":
+		actualInstanceType = "t3.medium"
+	case "large":
+		actualInstanceType = "t3.large"
+	case "xlarge":
+		actualInstanceType = "t3.xlarge"
+	case "t2.micro", "t3.micro", "t3.nano", "t2.small", "c7i-flex.large", "m7i-flex.large":
+		actualInstanceType = instanceType
+	default:
+		actualInstanceType = "t3.micro" // Default
+	}
+	
+	// Try to describe the instance type
+	params := map[string]string{
+		"Action":           "DescribeInstanceTypes",
+		"InstanceTypes.1":  actualInstanceType,
+		"MaxResults":       "1",
+	}
+	
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return fmt.Errorf("failed to validate instance type: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("instance type %s not available in region %s", actualInstanceType, region)
+	}
+	
 	return nil
 }
 
