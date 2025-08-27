@@ -974,7 +974,7 @@ func performEC2DryRun(ctx context.Context, configPath string, ec2Config config.E
 	}
 	
 	// Show validation summary
-	fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
+	fmt.Printf("\n%s\n", strings.Repeat("=", 80))
 	if len(validationErrors) == 0 {
 		fmt.Printf("VALIDATION STATUS: ✓ ALL CHECKS PASSED\n")
 		fmt.Printf("This configuration is ready for deployment.\n")
@@ -987,14 +987,14 @@ func performEC2DryRun(ctx context.Context, configPath string, ec2Config config.E
 	}
 	
 	// Add cost estimate
-	fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
+	fmt.Printf("\n%s\n", strings.Repeat("=", 80))
 	if estimate, err := config.EstimateEC2Costs(ec2Config.Resources.Compute[0], ec2Config.Region); err == nil {
 		fmt.Println(estimate.FormatCostEstimate())
 	} else {
 		fmt.Printf("Cost estimate unavailable: %v\n", err)
 	}
 	
-	fmt.Printf(strings.Repeat("=", 80) + "\n")
+	fmt.Printf("%s\n", strings.Repeat("=", 80))
 	if len(validationErrors) == 0 {
 		fmt.Printf("Ready to deploy! Use --apply to create the resources.\n")
 	} else {

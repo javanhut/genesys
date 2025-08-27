@@ -1,106 +1,224 @@
-# Genesys
+# Genesys - Cloud Infrastructure Made Simple
 
-A simplicity-first Infrastructure as a Service tool that focuses on outcomes rather than resources. It provides a discovery-first approach to cloud resource management with human-readable plans.
+Genesys is a simplicity-first Infrastructure as Code tool that focuses on outcomes rather than implementation details. Create, manage, and deploy cloud resources through interactive workflows without complex configuration files.
+
+## Why Genesys?
+
+**Traditional cloud tools are complex**:
+- Hundreds of parameters to understand
+- Provider-specific knowledge required
+- Manual configuration file creation
+- Easy to misconfigure security settings
+
+**Genesys makes it simple**:
+- Interactive guided workflows
+- Secure defaults built-in
+- Real-time cost estimation
+- Human-readable deployment plans
+- Multi-cloud support with unified interface
+
+## Quick Start Tutorial
+
+### Step 1: Installation
+
+```bash
+# Clone and build
+git clone https://github.com/javanhut/genesys.git
+cd genesys
+go build -o genesys ./cmd/genesys
+
+# Verify installation
+./genesys version
+```
+
+### Step 2: Configure Your First Provider
+
+```bash
+# Start interactive setup
+./genesys config setup
+```
+
+Follow the prompts to configure AWS (or your preferred provider):
+1. Choose provider: **aws**
+2. Region: **us-east-1** (or your preferred region)
+3. Credentials: Uses your existing AWS credentials (AWS CLI, environment variables, or IAM role)
+
+### Step 3: Create Your First Storage Bucket
+
+```bash
+# Start interactive mode
+./genesys interact
+```
+
+Follow this workflow:
+1. **Provider**: Select `aws`
+2. **Resource Type**: Select `S3 Storage Bucket`
+3. **Configuration**:
+   - Bucket name: `my-tutorial-bucket-123` (must be globally unique)
+   - Versioning: `yes` (recommended)
+   - Encryption: `yes` (secure by default)
+   - Public access: `no` (secure by default)
+   - Add tags as desired
+
+The interactive wizard will generate a configuration file like `s3-my-tutorial-bucket-1234567890.yaml`
+
+### Step 4: Preview and Deploy
+
+```bash
+# Preview what will be created (safe - no changes made)
+./genesys execute s3-my-tutorial-bucket-*.yaml --dry-run
+
+# Deploy the bucket
+./genesys execute s3-my-tutorial-bucket-*.yaml
+```
+
+Success! Your S3 bucket is now created with secure defaults.
+
+### Step 5: Create Your First EC2 Instance
+
+```bash
+# Start interactive mode again
+./genesys interact
+```
+
+Follow this workflow:
+1. **Provider**: Select `aws`  
+2. **Resource Type**: Select `Compute Instance`
+3. **Configuration**:
+   - Instance name: `my-dev-server` (must be unique)
+   - Instance type: `t3.micro` (Free Tier eligible)
+   - Operating system: `ubuntu-lts`
+   - Storage: `8 GB` (default)
+   - Add environment tags
+
+The wizard will generate `ec2-my-dev-server-1234567890.toml` with cost estimates.
+
+```bash
+# Preview the instance creation
+./genesys execute ec2-my-dev-server-*.toml --dry-run
+
+# Deploy the instance
+./genesys execute ec2-my-dev-server-*.toml
+```
+
+### Step 6: Manage Your Resources
+
+```bash
+# List all resources you've created
+./genesys list resources
+
+# List only storage resources
+./genesys list resources --service storage
+
+# List only compute instances  
+./genesys list resources --service compute
+```
+
+### Step 7: Clean Up (When Done)
+
+```bash
+# Delete the EC2 instance
+./genesys execute deletion ec2-my-dev-server-*.toml
+
+# Delete the S3 bucket
+./genesys execute deletion s3-my-tutorial-bucket-*.yaml
+```
+
+## What Can You Create?
+
+### Currently Supported Resources
+
+#### AWS Storage (S3)
+- **S3 Buckets**: Secure object storage with versioning, encryption, and lifecycle policies
+- **Interactive Creation**: Guided setup with cost estimation
+- **Policy Enforcement**: Secure defaults prevent public access
+- **Full Lifecycle**: Create, update, and delete with configuration files
+
+#### AWS Compute (EC2)
+- **EC2 Instances**: Virtual machines with automatic AMI resolution
+- **Free Tier Support**: t3.micro, t3.small, c7i-flex.large, m7i-flex.large options clearly marked
+- **Cost Estimation**: Real-time pricing with regional rates
+- **Unique Names**: Built-in validation prevents duplicate instance names
+- **Storage Options**: Configurable EBS volumes with encryption
+
+### Coming Soon
+- **Databases** - RDS instances with automated backups
+- **Functions** - Lambda/serverless compute
+- **Networks** - VPCs, subnets, security groups
+- **Multi-Cloud** - GCP, Azure, Tencent Cloud support
 
 ## Key Features
 
-- **Interactive Workflows** - Guided prompts for resource creation without manual config writing
-- **Multi-Cloud Support** - AWS, GCP, Azure, Tencent Cloud with unified interface
-- **Configuration-Driven** - YAML-based resource lifecycle management  
-- **Dry-Run Capability** - Preview all changes before deployment
-- **Direct API Integration** - Fast performance without heavy SDKs
-- **Provider-Agnostic** - Write once, deploy anywhere
+### Interactive Workflows
+- **Guided Prompts**: Step-by-step configuration with help text
+- **Smart Defaults**: Secure, cost-effective settings pre-selected
+- **Real-Time Validation**: Immediate feedback on configuration choices
+- **Cost Awareness**: See estimated costs before deployment
 
-## Quick Start
+### Security First
+- **Secure Defaults**: Encryption enabled, public access blocked by default
+- **Policy Enforcement**: Built-in policies prevent insecure configurations
+- **Unique Validation**: Prevents resource name conflicts
+- **Permission Checking**: Validates required cloud permissions before deployment
 
-### Installation
+### Developer Experience
+- **Dry-Run Everything**: Preview all changes before making them
+- **Human-Readable Plans**: Understand exactly what will happen
+- **Configuration Files**: Generated TOML/YAML for version control
+- **Direct API Integration**: Fast performance without heavy SDKs
 
+## Complete Command Reference
+
+### Interactive Workflows
 ```bash
-# Build from source
-git clone <repository-url>
-cd genesys
-go build -o genesys ./cmd/genesys
+genesys interact                    # Start interactive resource creation wizard
 ```
 
-### Configure Provider
-
-```bash
-# Interactive provider setup
-genesys config setup
-```
-
-### Create Your First Resource
-
-```bash
-# Start interactive workflow
-genesys interact
-# Select provider: aws
-# Select resource: S3 Storage Bucket  
-# Follow prompts to configure bucket
-
-# Preview deployment
-genesys execute s3-mybucket-*.yaml --dry-run
-
-# Deploy the resource
-genesys execute s3-mybucket-*.yaml
-
-# List your resources
-genesys list resources
-
-# Clean up when done
-genesys execute deletion s3-mybucket-*.yaml
-```
-
-## Available Commands
-
-### Interactive Mode
-```bash
-genesys interact                    # Start interactive resource creation
-```
-
-### Configuration Management
+### Configuration Management  
 ```bash
 genesys config setup                # Configure cloud provider credentials
 genesys config list                 # List configured providers
-genesys config show aws             # Show provider configuration
+genesys config show aws             # Show provider configuration details
 genesys config default aws          # Set default provider
 ```
 
 ### Resource Deployment
 ```bash
-genesys execute config.yaml                    # Deploy resources
-genesys execute config.yaml --dry-run          # Preview changes
-genesys execute deletion config.yaml           # Delete resources
+# Deploy resources
+genesys execute config.yaml                    
+genesys execute config.toml
+
+# Preview changes (safe - no actual deployment)
+genesys execute config.yaml --dry-run          
+
+# Delete resources
+genesys execute deletion config.yaml           
 ```
 
 ### Resource Discovery
 ```bash
-genesys list resources              # List all resources (alias: discover)
-genesys list --service storage      # List only storage resources
-genesys list --output json          # JSON output format
+genesys list resources              # List all your resources
+genesys list resources --service storage      # Filter by service type
+genesys list resources --output json          # JSON output format
 ```
 
-## Supported Resources
+### Help and Information
+```bash
+genesys --help                      # Show all available commands
+genesys version                     # Show version information
+genesys <command> --help            # Get help for specific command
+```
 
-### Currently Implemented
-- **S3 Storage Buckets** - Complete lifecycle with versioning, encryption, lifecycle policies
+## Configuration Examples
 
-### Planned
-- **Compute Instances** - Virtual machines across providers
-- **Databases** - Managed database services
-- **Functions** - Serverless compute
-- **Networks** - VPCs, subnets, security groups
-
-## Configuration Example
-
-Generated S3 bucket configuration:
-
+### S3 Bucket Configuration (Auto-Generated)
 ```yaml
 provider: aws
 region: us-east-1
+
 resources:
   storage:
-    - name: my-app-storage
+    - name: my-app-data-bucket
       type: bucket
       versioning: true
       encryption: true
@@ -112,6 +230,7 @@ resources:
       lifecycle:
         archive_after_days: 90
         delete_after_days: 365
+
 policies:
   require_encryption: true
   no_public_buckets: true
@@ -120,126 +239,214 @@ policies:
     - ManagedBy
 ```
 
-## Example Outputs
+### EC2 Instance Configuration (Auto-Generated)
+```toml
+provider = "aws"
+region = "us-east-1"
 
-### Bucket Creation Plan
-```
-Plan: Deploy S3 Bucket 'my-bucket'
-==================================
+[[resources.compute]]
+name = "web-server-dev"
+type = "t3.micro"           # Free Tier eligible
+image = "ubuntu-lts"        # Resolves to latest Ubuntu LTS AMI
+count = 1
 
-What will happen:
-> 1. Create S3 bucket 'my-bucket'
-     -> Store your application data securely
-> 2. Enable versioning on bucket
-     -> Protect against accidental deletion
-> 3. Enable encryption with AWS managed keys
-     -> Secure data at rest
-> 4. Block all public access
-     -> Prevent data exposure
+[resources.compute.tags]
+Environment = "development"
+ManagedBy = "Genesys"
+Purpose = "web-server"
 
-Permissions needed:
-- s3:CreateBucket
-- s3:PutBucketVersioning
-- s3:PutBucketEncryption
-- s3:PutBucketPublicAccessBlock
-
-Cost estimate:
-- Monthly: $5.00 USD
-- Confidence: medium
-
-Time to complete: 30 seconds
+[policies]
+require_encryption = false
+no_public_instances = true
+require_tags = ["Environment", "ManagedBy", "Purpose"]
 ```
 
-## Architecture
+## Real-World Examples
 
-### Provider Interface
-All cloud providers implement the same interface, allowing truly provider-agnostic code:
+### Development Environment Setup
 
-```go
-type Provider interface {
-    Compute() ComputeService
-    Storage() StorageService
-    Network() NetworkService
-    Database() DatabaseService
-    Serverless() ServerlessService
-}
-```
-
-### Universal Resource Types
-Resources are abstracted across providers:
-- `small|medium|large|xlarge` instance types
-- `bucket` storage that works on S3, GCS, Azure Blob
-- `postgres|mysql` databases that map to RDS, CloudSQL, etc.
-
-### Intent-Driven Architecture
-Users express intent, not implementation:
-```bash
-# User says what they want
-genesys execute static-site domain=example.com
-
-# Genesys figures out how (S3 + CloudFront + Route53 on AWS,
-# Storage + CDN + DNS on GCP, etc.)
-```
-
-## Project Structure
-
-```
-genesys/
-├── cmd/genesys/           # CLI entry point
-│   ├── main.go
-│   └── commands/          # Command implementations
-├── pkg/                   # Core packages
-│   ├── provider/          # Provider interface and implementations  
-│   ├── config/            # YAML/TOML configuration with validation
-│   ├── intent/            # Intent parsing and interpretation
-│   ├── planner/           # Plan generation and formatting
-│   ├── executor/          # Plan execution (future)
-│   └── discovery/         # Resource discovery (future)
-├── internal/              # Internal utilities (future)
-├── examples/              # Configuration examples
-│   ├── simple-website.yaml
-│   ├── serverless-api.yaml
-│   ├── web-application.toml
-│   └── multi-cloud.yaml
-├── ARCHITECTURE.md        # Detailed architecture documentation
-└── README.md
-```
-
-## Testing
+**Goal**: Create a development environment with storage and compute
 
 ```bash
-# Run all tests
-go test ./...
+# Step 1: Configure AWS
+genesys config setup
+# Choose: aws, us-east-1, use existing credentials
 
-# Run specific package tests
-go test ./pkg/intent -v
-go test ./pkg/planner -v
+# Step 2: Create application data bucket
+genesys interact
+# Provider: aws
+# Resource: S3 Storage Bucket
+# Name: myapp-dev-data-bucket
+# Enable versioning and encryption
+
+# Step 3: Create development server
+genesys interact  
+# Provider: aws
+# Resource: Compute Instance
+# Name: myapp-dev-server
+# Type: t3.micro (Free Tier)
+# OS: ubuntu-lts
+
+# Step 4: Deploy everything
+genesys execute s3-myapp-dev-data-bucket-*.yaml --dry-run
+genesys execute s3-myapp-dev-data-bucket-*.yaml
+
+genesys execute ec2-myapp-dev-server-*.toml --dry-run  
+genesys execute ec2-myapp-dev-server-*.toml
+
+# Step 5: Verify deployment
+genesys list resources
 ```
 
-## Next Steps (Beyond MVP)
+### Production Deployment Workflow
 
-- **Real provider implementations** (AWS SDK integration)
-- **State management** (S3/DynamoDB backend)
-- **Plan execution** (apply functionality)
-- **Resource adoption** (import existing resources)
-- **Interactive improvements** (better UX)
-- **Multi-cloud support** (GCP, Azure providers)
+**Goal**: Deploy production resources with proper validation
 
-## Contributing
+```bash
+# Step 1: Configure production region
+genesys config setup
+# Choose: aws, us-west-2 (production region)
 
-This is Phase 0 implementation focusing on the core architecture and user experience. The foundation is built to support the full vision outlined in the design documents.
+# Step 2: Create production bucket with strict settings
+genesys interact
+# Provider: aws
+# Resource: S3 Storage Bucket  
+# Name: myapp-prod-storage
+# Versioning: yes
+# Encryption: yes
+# Lifecycle: 30 days archive, 365 days delete
 
-## Philosophy
+# Step 3: Always dry-run first in production
+genesys execute s3-myapp-prod-storage-*.yaml --dry-run
 
-Genesys follows these principles:
+# Step 4: Review the plan, then deploy
+genesys execute s3-myapp-prod-storage-*.yaml
 
-1. **Simplicity First**: Complex infrastructure should be simple to deploy
-2. **Outcome Focused**: Users specify what they want, not how to build it
-3. **Discovery Over Creation**: Always check what exists first
-4. **Provider Agnostic**: Write once, run anywhere
-5. **Safe by Default**: Preview first, apply explicitly
-6. **Human Readable**: Plans anyone can understand
+# Step 5: Monitor and verify
+genesys list resources
+aws s3 ls s3://myapp-prod-storage
+```
+
+### Multi-Environment Management
+
+**Goal**: Manage development, staging, and production environments
+
+```bash
+# Configure multiple regions/accounts
+genesys config setup  # Development: us-east-1
+genesys config setup  # Staging: us-west-1  
+genesys config setup  # Production: us-west-2
+
+# Create resources per environment
+genesys interact  # Dev resources
+genesys interact  # Staging resources  
+genesys interact  # Production resources
+
+# Deploy with appropriate validation
+genesys execute dev-*.yaml
+genesys execute staging-*.yaml --dry-run
+genesys execute staging-*.yaml
+genesys execute prod-*.yaml --dry-run
+genesys execute prod-*.yaml
+```
+
+## Advanced Usage
+
+### Cost Management
+- **Estimate Before Deploy**: All resources show cost estimates during creation
+- **Free Tier Awareness**: Free Tier eligible options are clearly marked
+- **Regional Pricing**: Cost estimates reflect your selected region
+- **Resource Tagging**: Automatic tagging helps with cost allocation
+
+### Security Best Practices  
+- **Encryption by Default**: Storage and compute resources encrypted automatically
+- **Private by Default**: Public access disabled unless explicitly enabled
+- **Policy Validation**: Built-in policies prevent common security mistakes
+- **Name Uniqueness**: Prevents resource conflicts and naming collisions
+
+### Team Workflows
+- **Version Control**: Save generated configuration files in Git
+- **Consistent Naming**: Use descriptive, environment-specific names  
+- **Tag Standards**: Consistent tagging across all resources
+- **Review Process**: Always use dry-run for production deployments
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+**"Provider not configured"**
+```bash
+genesys config setup
+```
+
+**"Invalid credentials"**  
+```bash
+genesys config show aws    # Check current configuration
+genesys config setup       # Reconfigure credentials
+```
+
+**"Resource name already exists"**
+- Choose a different, unique name
+- Check existing resources: `genesys list resources`
+
+**"Permission denied"**
+- Verify IAM permissions in AWS console
+- Check account limits and quotas
+- Ensure credentials have required permissions
+
+**"Dry-run shows different results than expected"**
+- AMI IDs and availability zones are resolved dynamically
+- Cost estimates may vary by region and current pricing
+- Instance types may have regional availability differences
+
+### Getting Help
+
+```bash
+genesys --help                     # General help
+genesys interact --help            # Interactive mode help
+genesys config --help              # Configuration help
+genesys execute --help             # Deployment help
+genesys list --help                # Resource listing help
+```
+
+### Debug Information
+```bash
+genesys config list                # Show all provider configurations
+genesys config show aws            # Show AWS-specific configuration  
+genesys list resources --output json  # Get detailed resource information
+```
+
+## Next Steps
+
+### Learn More
+- **[Getting Started Guide](docs/getting-started.md)** - Detailed walkthrough
+- **[Interactive Workflows](docs/interactive-workflow.md)** - Advanced interactive usage
+- **[Configuration Guide](docs/configuration.md)** - Provider setup and management
+- **[Commands Reference](docs/commands.md)** - Complete command documentation
+
+### Extend Your Usage
+1. **Explore More Resources** - Try databases and serverless functions when available
+2. **Multi-Cloud Setup** - Configure multiple cloud providers  
+3. **Automation** - Integrate with CI/CD pipelines
+4. **Team Standards** - Establish naming and tagging conventions
+5. **Cost Optimization** - Use resource tagging for cost allocation
+
+## Architecture Overview
+
+### Core Principles
+1. **Simplicity First** - Complex infrastructure should be simple to deploy
+2. **Secure by Default** - Best practices built into every resource
+3. **Cost Conscious** - Always show cost implications before deployment
+4. **Provider Agnostic** - Same interface works across cloud providers
+5. **Human Readable** - Plans and configurations anyone can understand
+
+### Technical Design
+- **Direct API Integration** - Fast, lightweight cloud provider communication
+- **Interactive CLI** - Rich terminal experience with guided workflows  
+- **Configuration Generation** - TOML/YAML files for version control and repeatability
+- **Validation First** - Extensive validation before any cloud API calls
+- **State Awareness** - Tracks resources locally to prevent conflicts
 
 ---
 
-*"Infrastructure deployment should be as simple as describing what you want, not how to build it."*
+**Ready to get started?** Run `genesys config setup` to configure your first cloud provider, then `genesys interact` to create your first resource!
