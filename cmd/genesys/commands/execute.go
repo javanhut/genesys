@@ -223,6 +223,11 @@ func executeConfigFile(ctx context.Context, configPath string) error {
 		return executeS3Config(ctx, configPath)
 	}
 
+	// Try to parse as EC2 config
+	if isEC2Config(configPath) {
+		return executeEC2Config(ctx, configPath)
+	}
+
 	// Fall back to generic config execution
 	fmt.Printf("Executing configuration file: %s\n", configPath)
 	fmt.Println("Generic config execution not yet implemented")
@@ -249,6 +254,28 @@ func isS3Config(configPath string) bool {
 	return strings.Contains(content, "provider: aws") && 
 		   strings.Contains(content, "storage:") && 
 		   (strings.Contains(content, "bucket") || strings.Contains(content, "type: bucket"))
+}
+
+// isEC2Config checks if the file is an EC2 instance configuration
+func isEC2Config(configPath string) bool {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return false
+	}
+
+	content := string(data)
+	
+	// Check for TOML format first
+	if strings.HasSuffix(configPath, ".toml") {
+		return (strings.Contains(content, "provider = \"aws\"") || strings.Contains(content, "provider=\"aws\"")) &&
+			   (strings.Contains(content, "[[resources.compute]]") || strings.Contains(content, "compute") &&
+			   (strings.Contains(content, "instance") || strings.Contains(content, "type = \"t3\"")))
+	}
+	
+	// Fall back to YAML format
+	return strings.Contains(content, "provider: aws") && 
+		   strings.Contains(content, "compute:") && 
+		   (strings.Contains(content, "instance") || strings.Contains(content, "type:"))
 }
 
 // executeS3Config handles S3 bucket configuration
@@ -406,6 +433,204 @@ func executeS3Config(ctx context.Context, configPath string) error {
 	return nil
 }
 
+// executeEC2Config handles EC2 instance configuration
+func executeEC2Config(ctx context.Context, configPath string) error {
+	// Load EC2 configuration
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read configuration file: %w", err)
+	}
+
+	var ec2Config config.EC2InstanceConfig
+	
+	// Try to parse based on file extension
+	if strings.HasSuffix(configPath, ".toml") {
+		if err := toml.Unmarshal(data, &ec2Config); err != nil {
+			return fmt.Errorf("failed to parse EC2 configuration as TOML: %w", err)
+		}
+	} else {
+		// Fall back to YAML for backward compatibility
+		if err := yaml.Unmarshal(data, &ec2Config); err != nil {
+			return fmt.Errorf("failed to parse EC2 configuration as YAML: %w", err)
+		}
+	}
+
+	if len(ec2Config.Resources.Compute) == 0 {
+		return fmt.Errorf("no compute resources found in configuration")
+	}
+
+	instanceName := ec2Config.Resources.Compute[0].Name
+	
+	if dryRunFlag {
+		fmt.Printf("================================================================================\n")
+		fmt.Printf("DRY RUN: EC2 Instance Creation Plan\n")
+		fmt.Printf("Configuration: %s\n", configPath)
+		fmt.Printf("================================================================================\n\n")
+		
+		fmt.Printf("RESOURCE TO CREATE:\n")
+		fmt.Printf("  Type:         AWS EC2 Instance\n")
+		fmt.Printf("  Name:         %s\n", instanceName)
+		fmt.Printf("  Region:       %s\n", ec2Config.Region)
+		fmt.Printf("  Instance Type: %s\n", ec2Config.Resources.Compute[0].Type)
+		fmt.Printf("  AMI:          %s\n", ec2Config.Resources.Compute[0].Image)
+		
+		fmt.Printf("\nCONFIGURATION DETAILS:\n")
+		fmt.Printf("  Public IP:    %s\n", formatBool(ec2Config.Resources.Compute[0].PublicIP, "Assigned", "None"))
+		if ec2Config.Resources.Compute[0].KeyPair != "" {
+			fmt.Printf("  Key Pair:     %s\n", ec2Config.Resources.Compute[0].KeyPair)
+		}
+		if ec2Config.Resources.Compute[0].Storage != nil {
+			fmt.Printf("  Storage Size: %d GB\n", ec2Config.Resources.Compute[0].Storage.Size)
+			fmt.Printf("  Volume Type:  %s\n", ec2Config.Resources.Compute[0].Storage.VolumeType)
+			fmt.Printf("  Encrypted:    %s\n", formatBool(ec2Config.Resources.Compute[0].Storage.Encrypted, "Yes", "No"))
+		}
+		
+		if len(ec2Config.Resources.Compute[0].Tags) > 0 {
+			fmt.Printf("\nRESOURCE TAGS:\n")
+			for k, v := range ec2Config.Resources.Compute[0].Tags {
+				fmt.Printf("  %-15s: %s\n", k, v)
+			}
+		}
+		
+		if ec2Config.Resources.Compute[0].UserData != "" {
+			fmt.Printf("\nUSER DATA SCRIPT:\n")
+			lines := strings.Split(ec2Config.Resources.Compute[0].UserData, "\n")
+			for i, line := range lines {
+				if i > 5 {
+					fmt.Printf("  ... (truncated, %d more lines)\n", len(lines)-i)
+					break
+				}
+				if line != "" {
+					fmt.Printf("  %s\n", line)
+				}
+			}
+		}
+		
+		fmt.Printf("\nACTIONS THAT WOULD BE PERFORMED:\n")
+		fmt.Printf("  1. Launch EC2 instance '%s' in region %s\n", instanceName, ec2Config.Region)
+		fmt.Printf("  2. Configure instance with type %s\n", ec2Config.Resources.Compute[0].Type)
+		if ec2Config.Resources.Compute[0].PublicIP {
+			fmt.Printf("  3. Assign public IP address\n")
+		}
+		if len(ec2Config.Resources.Compute[0].Tags) > 0 {
+			fmt.Printf("  4. Apply %d tags to the instance\n", len(ec2Config.Resources.Compute[0].Tags))
+		}
+		if ec2Config.Resources.Compute[0].UserData != "" {
+			fmt.Printf("  5. Execute startup script on first boot\n")
+		}
+		
+		// Add cost estimate to dry run
+		fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
+		if estimate, err := config.EstimateEC2Costs(ec2Config.Resources.Compute[0], ec2Config.Region); err == nil {
+			fmt.Println(estimate.FormatCostEstimate())
+		} else {
+			fmt.Printf("Cost estimate unavailable: %v\n", err)
+		}
+		fmt.Printf(strings.Repeat("=", 80) + "\n")
+		
+		fmt.Printf("No actual changes will be made. Use --apply to create the resources.\n")
+		fmt.Printf("================================================================================\n")
+		return nil
+	}
+
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("APPLYING: EC2 Instance Creation\n")
+	fmt.Printf("Configuration: %s\n", configPath)
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("Creating EC2 Instance:\n")
+	fmt.Printf("  Name:   %s\n", instanceName)
+	fmt.Printf("  Region: %s\n", ec2Config.Region)
+	fmt.Printf("  Type:   %s\n", ec2Config.Resources.Compute[0].Type)
+	fmt.Println()
+
+	// Check AWS credentials
+	interactiveConfig, err := config.NewInteractiveConfig()
+	if err != nil {
+		return fmt.Errorf("failed to initialize configuration: %w", err)
+	}
+
+	_, err = interactiveConfig.LoadProviderConfig("aws")
+	if err != nil {
+		return fmt.Errorf("AWS not configured. Run 'genesys config setup' to configure AWS credentials")
+	}
+
+	// Create AWS provider
+	provider, err := aws.NewAWSProvider(ec2Config.Region)
+	if err != nil {
+		return fmt.Errorf("failed to create AWS provider: %w", err)
+	}
+
+	// Get compute service
+	computeService := provider.Compute()
+	
+	// Get instance configuration
+	instanceResource := ec2Config.Resources.Compute[0]
+	
+	// Create instance configuration
+	instanceConf := &providerTypes.InstanceConfig{
+		Name:  instanceResource.Name,
+		Type:  providerTypes.InstanceType(instanceResource.Type),
+		Image: instanceResource.Image,
+		Tags:  instanceResource.Tags,
+	}
+	
+	// Create instance
+	instance, err := computeService.CreateInstance(ctx, instanceConf)
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 instance: %w", err)
+	}
+
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("SUCCESS: EC2 Instance Created\n")
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("RESOURCE CREATED:\n")
+	fmt.Printf("  Instance ID:  %s\n", instance.ID)
+	fmt.Printf("  Name:         %s\n", instance.Name)
+	fmt.Printf("  Type:         %s\n", instance.Type)
+	fmt.Printf("  State:        %s\n", instance.State)
+	fmt.Printf("  Region:       %s\n", ec2Config.Region)
+	fmt.Printf("  Private IP:   %s\n", instance.PrivateIP)
+	fmt.Printf("  Created:      %s\n", instance.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
+	
+	fmt.Printf("\nCONFIGURATION APPLIED:\n")
+	fmt.Printf("  Instance Type: %s\n", ec2Config.Resources.Compute[0].Type)
+	fmt.Printf("  AMI:          %s\n", ec2Config.Resources.Compute[0].Image)
+	fmt.Printf("  Public IP:    %s\n", formatBool(ec2Config.Resources.Compute[0].PublicIP, "Assigned", "None"))
+	
+	if len(ec2Config.Resources.Compute[0].Tags) > 0 {
+		fmt.Printf("  Tags Applied: %d\n", len(ec2Config.Resources.Compute[0].Tags))
+	}
+	
+	// Add cost information to deployment output
+	fmt.Printf("\n" + strings.Repeat("-", 50) + "\n")
+	if estimate, err := config.EstimateEC2Costs(ec2Config.Resources.Compute[0], ec2Config.Region); err == nil {
+		fmt.Printf("ESTIMATED COSTS:\n")
+		fmt.Printf("  Monthly Cost: $%.2f/month ($%.4f/hour)\n", estimate.TotalMonthlyCost, estimate.HourlyRate)
+		warningLevel := estimate.GetCostWarningLevel()
+		switch warningLevel {
+		case "HIGH":
+			fmt.Printf("  HIGH COST WARNING: Monitor usage closely\n")
+		case "MODERATE":
+			fmt.Printf("  MODERATE COST: Set up billing alerts\n")
+		case "LOW":
+			fmt.Printf("  LOW COST: Cost-effective choice\n")
+		}
+	}
+	fmt.Printf(strings.Repeat("-", 50) + "\n")
+	
+	fmt.Printf("\nNEXT STEPS:\n")
+	fmt.Printf("  • View instance status: aws ec2 describe-instances --instance-ids %s\n", instance.ID)
+	if ec2Config.Resources.Compute[0].KeyPair != "" {
+		fmt.Printf("  • Connect via SSH:      ssh -i ~/.ssh/%s.pem ec2-user@<public-ip>\n", ec2Config.Resources.Compute[0].KeyPair)
+	}
+	fmt.Printf("  • Delete instance:      genesys execute deletion %s\n", configPath)
+	fmt.Printf("\n================================================================================\n")
+
+	return nil
+}
+
 // executeDeletion handles deletion of resources
 func executeDeletion(ctx context.Context, configPath string) error {
 	// Check if file exists
@@ -416,6 +641,11 @@ func executeDeletion(ctx context.Context, configPath string) error {
 	// Try to parse as S3 config first
 	if isS3Config(configPath) {
 		return executeS3Deletion(ctx, configPath)
+	}
+
+	// Try to parse as EC2 config
+	if isEC2Config(configPath) {
+		return executeEC2Deletion(ctx, configPath)
 	}
 
 	fmt.Printf("Deletion for configuration file '%s' not yet implemented\n", configPath)
@@ -482,7 +712,7 @@ func executeS3Deletion(ctx context.Context, configPath string) error {
 	fmt.Printf("  Region: %s\n", s3Config.Region)
 	fmt.Printf("  ARN:    arn:aws:s3:::%s\n\n", bucketName)
 	
-	fmt.Printf("⚠️  This action cannot be undone!\n")
+	fmt.Printf("This action cannot be undone!\n")
 	fmt.Println("Proceeding with deletion...")
 
 	// Create AWS provider
@@ -522,6 +752,124 @@ func executeS3Deletion(ctx context.Context, configPath string) error {
 	
 	fmt.Printf("\nThe bucket and all its contents have been permanently removed.\n")
 	fmt.Printf("This action cannot be undone.\n")
+	fmt.Printf("\n================================================================================\n")
+	return nil
+}
+
+// executeEC2Deletion handles EC2 instance deletion
+func executeEC2Deletion(ctx context.Context, configPath string) error {
+	// Load EC2 configuration
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read configuration file: %w", err)
+	}
+
+	var ec2Config config.EC2InstanceConfig
+	
+	// Try to parse based on file extension
+	if strings.HasSuffix(configPath, ".toml") {
+		if err := toml.Unmarshal(data, &ec2Config); err != nil {
+			return fmt.Errorf("failed to parse EC2 configuration as TOML: %w", err)
+		}
+	} else {
+		// Fall back to YAML for backward compatibility
+		if err := yaml.Unmarshal(data, &ec2Config); err != nil {
+			return fmt.Errorf("failed to parse EC2 configuration as YAML: %w", err)
+		}
+	}
+
+	if len(ec2Config.Resources.Compute) == 0 {
+		return fmt.Errorf("no compute resources found in configuration")
+	}
+
+	instanceName := ec2Config.Resources.Compute[0].Name
+
+	if dryRunFlag {
+		fmt.Printf("================================================================================\n")
+		fmt.Printf("DRY RUN: EC2 Instance Deletion Plan\n")
+		fmt.Printf("Configuration: %s\n", configPath)
+		fmt.Printf("================================================================================\n\n")
+		
+		fmt.Printf("RESOURCE TO DELETE:\n")
+		fmt.Printf("  Type:         AWS EC2 Instance\n")
+		fmt.Printf("  Name:         %s\n", instanceName)
+		fmt.Printf("  Region:       %s\n", ec2Config.Region)
+		fmt.Printf("  Instance Type: %s\n\n", ec2Config.Resources.Compute[0].Type)
+		
+		fmt.Printf("ACTIONS THAT WOULD BE PERFORMED:\n")
+		fmt.Printf("  1. Find instances with Name tag '%s'\n", instanceName)
+		fmt.Printf("  2. Stop running instances (if any)\n")
+		fmt.Printf("  3. Terminate the instances\n")
+		fmt.Printf("  4. Delete associated EBS volumes (if configured)\n")
+		
+		fmt.Printf("\nWARNING: This action is IRREVERSIBLE!\n")
+		fmt.Printf("The instance and its data will be permanently lost.\n")
+		
+		fmt.Printf("\n================================================================================\n")
+		fmt.Printf("No actual changes will be made. Use 'genesys execute deletion %s' to proceed.\n", configPath)
+		fmt.Printf("================================================================================\n")
+		return nil
+	}
+
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("APPLYING: EC2 Instance Deletion\n")
+	fmt.Printf("Configuration: %s\n", configPath)
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("[WARNING] Deleting EC2 Instance:\n")
+	fmt.Printf("  Name:   %s\n", instanceName)
+	fmt.Printf("  Region: %s\n", ec2Config.Region)
+	fmt.Printf("  Type:   %s\n\n", ec2Config.Resources.Compute[0].Type)
+	
+	fmt.Printf("This action cannot be undone!\n")
+	fmt.Println("Proceeding with deletion...")
+
+	// Create AWS provider
+	provider, err := aws.NewAWSProvider(ec2Config.Region)
+	if err != nil {
+		return fmt.Errorf("failed to create AWS provider: %w", err)
+	}
+
+	// Get compute service
+	computeService := provider.Compute()
+
+	// Find instances with the matching name tag
+	instances, err := computeService.ListInstances(ctx, map[string]string{
+		"tag:Name": instanceName,
+		"instance-state-name": "running,stopped,stopping,pending",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list instances: %w", err)
+	}
+
+	if len(instances) == 0 {
+		fmt.Printf("No instances found with Name tag '%s'. Nothing to delete.\n", instanceName)
+		return nil
+	}
+
+	// Delete all matching instances
+	for _, instance := range instances {
+		fmt.Printf("Terminating instance: %s (%s)\n", instance.ID, instance.State)
+		
+		if err := computeService.DeleteInstance(ctx, instance.ID); err != nil {
+			return fmt.Errorf("failed to terminate instance %s: %w", instance.ID, err)
+		}
+	}
+
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("SUCCESS: EC2 Instance(s) Terminated\n")
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("RESOURCES TERMINATED:\n")
+	for _, instance := range instances {
+		fmt.Printf("  Instance ID:  %s\n", instance.ID)
+		fmt.Printf("  Name:         %s\n", instance.Name)
+		fmt.Printf("  Type:         %s\n", instance.Type)
+	}
+	fmt.Printf("  Region:       %s\n", ec2Config.Region)
+	
+	fmt.Printf("\nThe instance(s) are now terminating and will be permanently removed.\n")
+	fmt.Printf("Associated EBS volumes may be deleted based on their configuration.\n")
 	fmt.Printf("\n================================================================================\n")
 	return nil
 }

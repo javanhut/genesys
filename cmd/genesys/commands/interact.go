@@ -158,9 +158,44 @@ func checkProviderConfig(provider string) error {
 	return nil
 }
 
-// Placeholder functions for other resource types
+// interactCompute handles EC2 instance creation workflow
 func interactCompute(provider string) error {
-	fmt.Printf("Compute instance creation for %s not yet implemented\n", provider)
+	fmt.Printf("\nCreating EC2 Instance Configuration for %s\n", provider)
+	fmt.Println("==========================================")
+	fmt.Println()
+
+	// Check if provider is configured
+	if err := checkProviderConfig(provider); err != nil {
+		fmt.Printf("[ERROR] Provider '%s' not configured. Run 'genesys config setup' first.\n", provider)
+		return err
+	}
+
+	// Use the EC2 interactive configuration
+	ec2Config, err := config.NewInteractiveEC2Config()
+	if err != nil {
+		return fmt.Errorf("failed to initialize EC2 configuration: %w", err)
+	}
+
+	// Generate configuration interactively
+	instanceConfig, instanceName, err := ec2Config.CreateInstanceConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create instance configuration: %w", err)
+	}
+
+	// Save configuration
+	filePath, err := ec2Config.SaveConfig(instanceConfig, instanceName)
+	if err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("[OK] Configuration saved to: %s\n", filePath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Printf("  • Review the configuration: cat %s\n", filePath)
+	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", filePath)
+	fmt.Printf("  • Deploy the instance: genesys execute %s\n", filePath)
+	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", filePath)
+
 	return nil
 }
 
