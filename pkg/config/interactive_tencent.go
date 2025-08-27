@@ -8,7 +8,7 @@ import (
 
 // getTencentCredentials interactively gets Tencent Cloud credentials
 func (ic *InteractiveConfig) getTencentCredentials() (map[string]string, error) {
-	fmt.Println("\n📋 Tencent Cloud Credential Configuration")
+	fmt.Println("\nTencent Cloud Credential Configuration")
 	fmt.Println("Please provide your Tencent Cloud credentials. You can find these in:")
 	fmt.Println("  • Tencent Cloud Console → Cloud Access Management → API Keys")
 	fmt.Println("  • https://console.cloud.tencent.com/cam/capi")

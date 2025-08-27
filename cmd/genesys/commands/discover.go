@@ -52,7 +52,7 @@ Examples:
 func runDiscover(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	fmt.Println("🔍 Discovering Resources")
+	fmt.Println("Discovering Resources")
 	fmt.Println("=======================")
 	fmt.Println()
 
@@ -351,7 +351,7 @@ func (dr *DiscoveryResults) ToHumanReadable() string {
 		}
 	}
 
-	output.WriteString("\n💡 Use 'genesys adopt <resource-id>' to manage these resources with Genesys\n")
+	output.WriteString("\nTip: Use 'genesys adopt <resource-id>' to manage these resources with Genesys\n")
 
 	return output.String()
 }

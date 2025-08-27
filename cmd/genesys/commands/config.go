@@ -58,7 +58,7 @@ Examples:
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
 
-			fmt.Println("🚀 Welcome to Genesys Cloud Provider Configuration!")
+			fmt.Println("Welcome to Genesys Cloud Provider Configuration!")
 			fmt.Println("This wizard will help you set up your cloud provider credentials.")
 			fmt.Println("")
 
@@ -67,7 +67,7 @@ Examples:
 			}
 
 			fmt.Println("")
-			fmt.Println("🎉 Configuration completed successfully!")
+			fmt.Println("Configuration completed successfully!")
 			fmt.Println("You can now use Genesys with your configured cloud provider.")
 			fmt.Println("")
 			fmt.Println("Next steps:")
@@ -118,7 +118,7 @@ This command shows:
 			for _, provider := range providers {
 				providerConfig, err := interactiveConfig.LoadProviderConfig(provider)
 				if err != nil {
-					fmt.Printf("  ❌ %s (failed to load configuration)\n", strings.ToUpper(provider))
+					fmt.Printf("  [ERROR] %s (failed to load configuration)\n", strings.ToUpper(provider))
 					continue
 				}
 
@@ -132,7 +132,7 @@ This command shows:
 					authMethod = "Local Credentials"
 				}
 
-				fmt.Printf("  ✅ %s%s\n", strings.ToUpper(provider), defaultMarker)
+				fmt.Printf("  [OK] %s%s\n", strings.ToUpper(provider), defaultMarker)
 				fmt.Printf("     Region: %s\n", providerConfig.Region)
 				fmt.Printf("     Auth: %s\n", authMethod)
 				fmt.Println("")
@@ -192,10 +192,10 @@ Examples:
 
 			fmt.Println("\nCredential Validation:")
 			if err := interactiveConfig.ValidateCredentials(providerConfig); err != nil {
-				fmt.Printf("  ❌ Validation failed: %v\n", err)
+				fmt.Printf("  [ERROR] Validation failed: %v\n", err)
 				fmt.Println("\nRun 'genesys config setup' to reconfigure this provider.")
 			} else {
-				fmt.Println("  ✅ Credentials are valid")
+				fmt.Println("  [OK] Credentials are valid")
 			}
 
 			return nil
@@ -254,7 +254,7 @@ Examples:
 				}
 			}
 
-			fmt.Printf("✅ Set %s as the default cloud provider\n", strings.ToUpper(provider))
+			fmt.Printf("[OK] Set %s as the default cloud provider\n", strings.ToUpper(provider))
 			return nil
 		},
 	}

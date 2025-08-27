@@ -8,7 +8,7 @@ import (
 
 // getAWSCredentials interactively gets AWS credentials
 func (ic *InteractiveConfig) getAWSCredentials() (map[string]string, error) {
-	fmt.Println("\n📋 AWS Credential Configuration")
+	fmt.Println("\nAWS Credential Configuration")
 	fmt.Println("Please provide your AWS credentials. You can find these in:")
 	fmt.Println("  • AWS Console → IAM → Users → Security credentials")
 	fmt.Println("  • AWS CLI: aws configure list")

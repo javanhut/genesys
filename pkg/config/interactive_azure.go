@@ -8,7 +8,7 @@ import (
 
 // getAzureCredentials interactively gets Azure credentials
 func (ic *InteractiveConfig) getAzureCredentials() (map[string]string, error) {
-	fmt.Println("\n📋 Microsoft Azure Credential Configuration")
+	fmt.Println("\nMicrosoft Azure Credential Configuration")
 	fmt.Println("Choose your Azure authentication method:")
 	fmt.Println("  • Service Principal: Recommended for automation")
 	fmt.Println("  • Azure CLI: Use existing 'az login' authentication")

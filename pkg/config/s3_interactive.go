@@ -1,40 +1,47 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/AlecAivazis/survey/v2"
-	"gopkg.in/yaml.v3"
+	"github.com/BurntSushi/toml"
 )
+
+// S3StorageResource represents a storage resource configuration
+type S3StorageResource struct {
+	Name         string            `yaml:"name" toml:"name"`
+	Type         string            `yaml:"type" toml:"type"`
+	Versioning   bool              `yaml:"versioning" toml:"versioning"`
+	Encryption   bool              `yaml:"encryption" toml:"encryption"`
+	PublicAccess bool              `yaml:"public_access" toml:"public_access"`
+	Tags         map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Lifecycle    *S3LifecycleConfig `yaml:"lifecycle,omitempty" toml:"lifecycle,omitempty"`
+}
+
+// S3LifecycleConfig represents lifecycle configuration
+type S3LifecycleConfig struct {
+	DeleteAfterDays  int `yaml:"delete_after_days,omitempty" toml:"delete_after_days,omitempty"`
+	ArchiveAfterDays int `yaml:"archive_after_days,omitempty" toml:"archive_after_days,omitempty"`
+}
 
 // S3BucketConfig represents a simple S3 bucket configuration
 type S3BucketConfig struct {
-	Provider string `yaml:"provider"`
-	Region   string `yaml:"region"`
+	Provider string `yaml:"provider" toml:"provider"`
+	Region   string `yaml:"region" toml:"region"`
 	
 	Resources struct {
-		Storage []struct {
-			Name         string            `yaml:"name"`
-			Type         string            `yaml:"type"`
-			Versioning   bool              `yaml:"versioning"`
-			Encryption   bool              `yaml:"encryption"`
-			PublicAccess bool              `yaml:"public_access"`
-			Tags         map[string]string `yaml:"tags,omitempty"`
-			Lifecycle    *struct {
-				DeleteAfterDays  int `yaml:"delete_after_days,omitempty"`
-				ArchiveAfterDays int `yaml:"archive_after_days,omitempty"`
-			} `yaml:"lifecycle,omitempty"`
-		} `yaml:"storage"`
-	} `yaml:"resources"`
+		Storage []S3StorageResource `yaml:"storage" toml:"storage"`
+	} `yaml:"resources" toml:"resources"`
 	
 	Policies struct {
-		RequireEncryption bool     `yaml:"require_encryption"`
-		NoPublicBuckets   bool     `yaml:"no_public_buckets"`
-		RequireTags       []string `yaml:"require_tags,omitempty"`
-	} `yaml:"policies"`
+		RequireEncryption bool     `yaml:"require_encryption" toml:"require_encryption"`
+		NoPublicBuckets   bool     `yaml:"no_public_buckets" toml:"no_public_buckets"`
+		RequireTags       []string `yaml:"require_tags,omitempty" toml:"require_tags,omitempty"`
+	} `yaml:"policies" toml:"policies"`
 }
 
 // InteractiveS3Config manages interactive S3 bucket configuration
@@ -56,7 +63,7 @@ func NewInteractiveS3Config() (*InteractiveS3Config, error) {
 
 // CreateBucketConfig creates an interactive S3 bucket configuration
 func (isc *InteractiveS3Config) CreateBucketConfig() (*S3BucketConfig, string, error) {
-	fmt.Println("🪣 S3 Bucket Configuration Wizard")
+	fmt.Println("S3 Bucket Configuration Wizard")
 	fmt.Println("Let's create a simple S3 bucket configuration!")
 	fmt.Println("")
 
@@ -84,18 +91,7 @@ func (isc *InteractiveS3Config) CreateBucketConfig() (*S3BucketConfig, string, e
 	}
 
 	// Add storage resource
-	config.Resources.Storage = []struct {
-		Name         string            `yaml:"name"`
-		Type         string            `yaml:"type"`
-		Versioning   bool              `yaml:"versioning"`
-		Encryption   bool              `yaml:"encryption"`
-		PublicAccess bool              `yaml:"public_access"`
-		Tags         map[string]string `yaml:"tags,omitempty"`
-		Lifecycle    *struct {
-			DeleteAfterDays  int `yaml:"delete_after_days,omitempty"`
-			ArchiveAfterDays int `yaml:"archive_after_days,omitempty"`
-		} `yaml:"lifecycle,omitempty"`
-	}{bucketConfig}
+	config.Resources.Storage = []S3StorageResource{bucketConfig}
 
 	// Set policies
 	config.Policies.RequireEncryption = bucketConfig.Encryption
@@ -106,10 +102,7 @@ func (isc *InteractiveS3Config) CreateBucketConfig() (*S3BucketConfig, string, e
 		}
 	}
 
-	// Generate config file name
-	fileName := fmt.Sprintf("s3-%s-%d.yaml", bucketName, time.Now().Unix())
-
-	return config, fileName, nil
+	return config, bucketName, nil
 }
 
 func (isc *InteractiveS3Config) getBucketName() (string, error) {
@@ -180,31 +173,9 @@ func (isc *InteractiveS3Config) getRegion() (string, error) {
 	return selectedRegion, nil
 }
 
-func (isc *InteractiveS3Config) getBucketConfiguration(bucketName string) (struct {
-	Name         string            `yaml:"name"`
-	Type         string            `yaml:"type"`
-	Versioning   bool              `yaml:"versioning"`
-	Encryption   bool              `yaml:"encryption"`
-	PublicAccess bool              `yaml:"public_access"`
-	Tags         map[string]string `yaml:"tags,omitempty"`
-	Lifecycle    *struct {
-		DeleteAfterDays  int `yaml:"delete_after_days,omitempty"`
-		ArchiveAfterDays int `yaml:"archive_after_days,omitempty"`
-	} `yaml:"lifecycle,omitempty"`
-}, error) {
+func (isc *InteractiveS3Config) getBucketConfiguration(bucketName string) (S3StorageResource, error) {
 	
-	config := struct {
-		Name         string            `yaml:"name"`
-		Type         string            `yaml:"type"`
-		Versioning   bool              `yaml:"versioning"`
-		Encryption   bool              `yaml:"encryption"`
-		PublicAccess bool              `yaml:"public_access"`
-		Tags         map[string]string `yaml:"tags,omitempty"`
-		Lifecycle    *struct {
-			DeleteAfterDays  int `yaml:"delete_after_days,omitempty"`
-			ArchiveAfterDays int `yaml:"archive_after_days,omitempty"`
-		} `yaml:"lifecycle,omitempty"`
-	}{
+	config := S3StorageResource{
 		Name: bucketName,
 		Type: "bucket",
 	}
@@ -337,15 +308,9 @@ func (isc *InteractiveS3Config) getTags() (map[string]string, error) {
 	return tags, nil
 }
 
-func (isc *InteractiveS3Config) getLifecycleConfig() (*struct {
-	DeleteAfterDays  int `yaml:"delete_after_days,omitempty"`
-	ArchiveAfterDays int `yaml:"archive_after_days,omitempty"`
-}, error) {
+func (isc *InteractiveS3Config) getLifecycleConfig() (*S3LifecycleConfig, error) {
 	
-	lifecycle := &struct {
-		DeleteAfterDays  int `yaml:"delete_after_days,omitempty"`
-		ArchiveAfterDays int `yaml:"archive_after_days,omitempty"`
-	}{}
+	lifecycle := &S3LifecycleConfig{}
 
 	// Archive configuration
 	var enableArchive bool
@@ -412,16 +377,27 @@ func (isc *InteractiveS3Config) getLifecycleConfig() (*struct {
 }
 
 // SaveConfig saves the S3 bucket configuration to a file
-func (isc *InteractiveS3Config) SaveConfig(config *S3BucketConfig, fileName string) (string, error) {
-	// Convert to YAML
-	yamlData, err := yaml.Marshal(config)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal config to YAML: %w", err)
+func (isc *InteractiveS3Config) SaveConfig(config *S3BucketConfig, bucketName string) (string, error) {
+	// Create directory structure: resources/s3/
+	dirPath := filepath.Join("resources", "s3")
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create directory structure: %w", err)
 	}
 
-	// Save to file in current directory
-	filePath := fmt.Sprintf("./%s", fileName)
-	if err := os.WriteFile(filePath, yamlData, 0644); err != nil {
+	// Generate filename based on bucket name
+	fileName := fmt.Sprintf("%s.toml", bucketName)
+	filePath := filepath.Join(dirPath, fileName)
+
+	// Convert to TOML
+	buf := new(bytes.Buffer)
+	encoder := toml.NewEncoder(buf)
+	encoder.Indent = ""
+	if err := encoder.Encode(config); err != nil {
+		return "", fmt.Errorf("failed to marshal config to TOML: %w", err)
+	}
+
+	// Save to file
+	if err := os.WriteFile(filePath, buf.Bytes(), 0644); err != nil {
 		return "", fmt.Errorf("failed to write config file: %w", err)
 	}
 

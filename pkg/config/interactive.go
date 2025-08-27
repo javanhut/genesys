@@ -55,7 +55,7 @@ func (ic *InteractiveConfig) ConfigureProvider() error {
 	
 	var useLocal bool
 	if hasLocal {
-		fmt.Printf("\n✅ Found existing %s credentials:\n%s\n", strings.ToUpper(provider), localInfo)
+		fmt.Printf("\n[OK] Found existing %s credentials:\n%s\n", strings.ToUpper(provider), localInfo)
 		
 		prompt := &survey.Confirm{
 			Message: fmt.Sprintf("Use existing local %s credentials?", strings.ToUpper(provider)),
@@ -109,10 +109,10 @@ func (ic *InteractiveConfig) ConfigureProvider() error {
 
 	// Validate credentials
 	if err := ic.ValidateCredentials(providerConfig); err != nil {
-		fmt.Printf("⚠️  Warning: Credential validation failed: %v\n", err)
+		fmt.Printf("[WARNING] Credential validation failed: %v\n", err)
 		fmt.Println("Configuration saved, but please verify your credentials manually.")
 	} else {
-		fmt.Printf("✅ %s configuration saved and validated successfully!\n", strings.ToUpper(provider))
+		fmt.Printf("[OK] %s configuration saved and validated successfully!\n", strings.ToUpper(provider))
 	}
 
 	return nil

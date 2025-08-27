@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/javanhut/genesys/pkg/config"
 	"github.com/javanhut/genesys/pkg/intent"
 	"github.com/javanhut/genesys/pkg/planner"
@@ -233,8 +233,16 @@ func isS3Config(configPath string) bool {
 		return false
 	}
 
-	// Check if it contains S3-specific keys
 	content := string(data)
+	
+	// Check for TOML format first
+	if strings.HasSuffix(configPath, ".toml") {
+		return (strings.Contains(content, "provider = \"aws\"") || strings.Contains(content, "provider=\"aws\"")) &&
+			   (strings.Contains(content, "[[resources.storage]]") || strings.Contains(content, "storage") &&
+			   (strings.Contains(content, "bucket") || strings.Contains(content, "type = \"bucket\"")))
+	}
+	
+	// Fall back to YAML format
 	return strings.Contains(content, "provider: aws") && 
 		   strings.Contains(content, "storage:") && 
 		   (strings.Contains(content, "bucket") || strings.Contains(content, "type: bucket"))
@@ -249,34 +257,84 @@ func executeS3Config(ctx context.Context, configPath string) error {
 	}
 
 	var s3Config config.S3BucketConfig
-	if err := yaml.Unmarshal(data, &s3Config); err != nil {
-		return fmt.Errorf("failed to parse S3 configuration: %w", err)
+	
+	// Try to parse based on file extension
+	if strings.HasSuffix(configPath, ".toml") {
+		if err := toml.Unmarshal(data, &s3Config); err != nil {
+			return fmt.Errorf("failed to parse S3 configuration as TOML: %w", err)
+		}
+	} else {
+		// Fall back to YAML for backward compatibility
+		if err := yaml.Unmarshal(data, &s3Config); err != nil {
+			return fmt.Errorf("failed to parse S3 configuration as YAML: %w", err)
+		}
 	}
 
 	bucketName := s3Config.Resources.Storage[0].Name
 	
 	if dryRunFlag {
-		fmt.Printf("🔍 Dry run for S3 bucket configuration: %s\n", filepath.Base(configPath))
-		fmt.Println("===============================================")
-		fmt.Printf("\nWhat would be created:\n")
-		fmt.Printf("  Bucket Name: %s\n", bucketName)
-		fmt.Printf("  Provider: %s\n", s3Config.Provider)
-		fmt.Printf("  Region: %s\n", s3Config.Region)
-		fmt.Printf("  Versioning: %v\n", s3Config.Resources.Storage[0].Versioning)
-		fmt.Printf("  Encryption: %v\n", s3Config.Resources.Storage[0].Encryption)
-		fmt.Printf("  Public Access: %v\n", s3Config.Resources.Storage[0].PublicAccess)
+		fmt.Printf("================================================================================\n")
+		fmt.Printf("DRY RUN: S3 Bucket Creation Plan\n")
+		fmt.Printf("Configuration: %s\n", configPath)
+		fmt.Printf("================================================================================\n\n")
+		
+		fmt.Printf("RESOURCE TO CREATE:\n")
+		fmt.Printf("  Type:         AWS S3 Bucket\n")
+		fmt.Printf("  Name:         %s\n", bucketName)
+		fmt.Printf("  Region:       %s\n", s3Config.Region)
+		fmt.Printf("  ARN:          arn:aws:s3:::%s\n\n", bucketName)
+		
+		fmt.Printf("CONFIGURATION DETAILS:\n")
+		fmt.Printf("  Versioning:   %s\n", formatBool(s3Config.Resources.Storage[0].Versioning, "Enabled", "Disabled"))
+		fmt.Printf("  Encryption:   %s\n", formatBool(s3Config.Resources.Storage[0].Encryption, "AES256 (Server-Side)", "None"))
+		fmt.Printf("  Public Access: %s\n", formatBool(s3Config.Resources.Storage[0].PublicAccess, "Allowed", "Blocked"))
+		
 		if len(s3Config.Resources.Storage[0].Tags) > 0 {
-			fmt.Printf("  Tags:\n")
+			fmt.Printf("\nRESOURCE TAGS:\n")
 			for k, v := range s3Config.Resources.Storage[0].Tags {
-				fmt.Printf("    %s: %s\n", k, v)
+				fmt.Printf("  %-15s: %s\n", k, v)
 			}
 		}
-		fmt.Printf("\nNo actual changes would be made.\n")
+		
+		if s3Config.Resources.Storage[0].Lifecycle != nil {
+			fmt.Printf("\nLIFECYCLE RULES:\n")
+			if s3Config.Resources.Storage[0].Lifecycle.DeleteAfterDays > 0 {
+				fmt.Printf("  Delete After:   %d days\n", s3Config.Resources.Storage[0].Lifecycle.DeleteAfterDays)
+			}
+			if s3Config.Resources.Storage[0].Lifecycle.ArchiveAfterDays > 0 {
+				fmt.Printf("  Archive After:  %d days (to Glacier)\n", s3Config.Resources.Storage[0].Lifecycle.ArchiveAfterDays)
+			}
+		}
+		
+		fmt.Printf("\nACTIONS THAT WOULD BE PERFORMED:\n")
+		fmt.Printf("  1. Create S3 bucket '%s' in region %s\n", bucketName, s3Config.Region)
+		if s3Config.Resources.Storage[0].Versioning {
+			fmt.Printf("  2. Enable versioning on the bucket\n")
+		}
+		if s3Config.Resources.Storage[0].Encryption {
+			fmt.Printf("  3. Enable AES256 encryption for all objects\n")
+		}
+		if !s3Config.Resources.Storage[0].PublicAccess {
+			fmt.Printf("  4. Block all public access to the bucket\n")
+		}
+		if len(s3Config.Resources.Storage[0].Tags) > 0 {
+			fmt.Printf("  5. Apply %d tags to the bucket\n", len(s3Config.Resources.Storage[0].Tags))
+		}
+		
+		fmt.Printf("\n================================================================================\n")
+		fmt.Printf("No actual changes will be made. Use --apply to create the resources.\n")
+		fmt.Printf("================================================================================\n")
 		return nil
 	}
 
-	fmt.Printf("🚀 Deploying S3 bucket from: %s\n", filepath.Base(configPath))
-	fmt.Println("======================================")
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("APPLYING: S3 Bucket Creation\n")
+	fmt.Printf("Configuration: %s\n", configPath)
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("Creating S3 Bucket:\n")
+	fmt.Printf("  Name:   %s\n", bucketName)
+	fmt.Printf("  Region: %s\n", s3Config.Region)
 	fmt.Println()
 
 	// Check AWS credentials
@@ -317,12 +375,30 @@ func executeS3Config(ctx context.Context, configPath string) error {
 		return fmt.Errorf("failed to create S3 bucket: %w", err)
 	}
 
-	fmt.Printf("✅ S3 bucket '%s' created successfully!\n", bucket.Name)
-	fmt.Printf("Region: %s\n", s3Config.Region)
-	fmt.Println()
-	fmt.Println("Next steps:")
-	fmt.Println("  • View bucket: aws s3 ls s3://" + bucketName)
-	fmt.Printf("  • Delete bucket: genesys execute deletion %s\n", filepath.Base(configPath))
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("SUCCESS: S3 Bucket Created\n")
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("RESOURCE CREATED:\n")
+	fmt.Printf("  Bucket Name:  %s\n", bucket.Name)
+	fmt.Printf("  Region:       %s\n", s3Config.Region)
+	fmt.Printf("  ARN:          arn:aws:s3:::%s\n", bucket.Name)
+	fmt.Printf("  Created:      %s\n", bucket.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
+	
+	fmt.Printf("\nCONFIGURATION APPLIED:\n")
+	fmt.Printf("  Versioning:   %s\n", formatBool(s3Config.Resources.Storage[0].Versioning, "Enabled", "Disabled"))
+	fmt.Printf("  Encryption:   %s\n", formatBool(s3Config.Resources.Storage[0].Encryption, "AES256 (Server-Side)", "None"))
+	fmt.Printf("  Public Access: %s\n", formatBool(s3Config.Resources.Storage[0].PublicAccess, "Allowed", "Blocked"))
+	
+	if len(s3Config.Resources.Storage[0].Tags) > 0 {
+		fmt.Printf("  Tags Applied: %d\n", len(s3Config.Resources.Storage[0].Tags))
+	}
+	
+	fmt.Printf("\nNEXT STEPS:\n")
+	fmt.Printf("  • View bucket contents: aws s3 ls s3://%s\n", bucketName)
+	fmt.Printf("  • Upload files:         aws s3 cp <file> s3://%s/\n", bucketName)
+	fmt.Printf("  • Delete bucket:        genesys execute deletion %s\n", configPath)
+	fmt.Printf("\n================================================================================\n")
 
 	return nil
 }
@@ -359,19 +435,43 @@ func executeS3Deletion(ctx context.Context, configPath string) error {
 	bucketName := s3Config.Resources.Storage[0].Name
 
 	if dryRunFlag {
-		fmt.Printf("🔍 Dry run for S3 bucket deletion: %s\n", filepath.Base(configPath))
-		fmt.Println("===========================================")
-		fmt.Printf("\nWhat would be deleted:\n")
-		fmt.Printf("  Bucket Name: %s\n", bucketName)
-		fmt.Printf("  Region: %s\n", s3Config.Region)
-		fmt.Printf("\nNo actual changes would be made.\n")
+		fmt.Printf("================================================================================\n")
+		fmt.Printf("DRY RUN: S3 Bucket Deletion Plan\n")
+		fmt.Printf("Configuration: %s\n", configPath)
+		fmt.Printf("================================================================================\n\n")
+		
+		fmt.Printf("RESOURCE TO DELETE:\n")
+		fmt.Printf("  Type:         AWS S3 Bucket\n")
+		fmt.Printf("  Name:         %s\n", bucketName)
+		fmt.Printf("  Region:       %s\n", s3Config.Region)
+		fmt.Printf("  ARN:          arn:aws:s3:::%s\n\n", bucketName)
+		
+		fmt.Printf("ACTIONS THAT WOULD BE PERFORMED:\n")
+		fmt.Printf("  1. Delete all objects in the bucket\n")
+		fmt.Printf("  2. Remove all object versions (if versioning is enabled)\n")
+		fmt.Printf("  3. Delete the bucket itself\n")
+		
+		fmt.Printf("\n⚠️  WARNING: This action is IRREVERSIBLE!\n")
+		fmt.Printf("   All data in this bucket will be permanently lost.\n")
+		
+		fmt.Printf("\n================================================================================\n")
+		fmt.Printf("No actual changes will be made. Use 'genesys execute deletion %s' to proceed.\n", configPath)
+		fmt.Printf("================================================================================\n")
 		return nil
 	}
 
-	fmt.Printf("⚠️  About to delete S3 bucket: %s\n", bucketName)
-	fmt.Printf("Region: %s\n", s3Config.Region)
-	fmt.Println()
-	fmt.Println("This action cannot be undone!")
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("APPLYING: S3 Bucket Deletion\n")
+	fmt.Printf("Configuration: %s\n", configPath)
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("[WARNING] Deleting S3 Bucket:\n")
+	fmt.Printf("  Name:   %s\n", bucketName)
+	fmt.Printf("  Region: %s\n", s3Config.Region)
+	fmt.Printf("  ARN:    arn:aws:s3:::%s\n\n", bucketName)
+	
+	fmt.Printf("⚠️  This action cannot be undone!\n")
+	fmt.Println("Proceeding with deletion...")
 
 	// Create AWS provider
 	provider, err := aws.NewAWSProvider(s3Config.Region)
@@ -387,6 +487,25 @@ func executeS3Deletion(ctx context.Context, configPath string) error {
 		return fmt.Errorf("failed to delete S3 bucket: %w", err)
 	}
 
-	fmt.Printf("✅ S3 bucket '%s' deleted successfully!\n", bucketName)
+	fmt.Printf("================================================================================\n")
+	fmt.Printf("SUCCESS: S3 Bucket Deleted\n")
+	fmt.Printf("================================================================================\n\n")
+	
+	fmt.Printf("RESOURCE DELETED:\n")
+	fmt.Printf("  Bucket Name:  %s\n", bucketName)
+	fmt.Printf("  Region:       %s\n", s3Config.Region)
+	fmt.Printf("  ARN:          arn:aws:s3:::%s\n", bucketName)
+	
+	fmt.Printf("\nThe bucket and all its contents have been permanently removed.\n")
+	fmt.Printf("This action cannot be undone.\n")
+	fmt.Printf("\n================================================================================\n")
 	return nil
+}
+
+// formatBool formats a boolean value with custom true/false labels
+func formatBool(value bool, trueLabel, falseLabel string) string {
+	if value {
+		return trueLabel
+	}
+	return falseLabel
 }

@@ -105,13 +105,13 @@ func runInteract(cmd *cobra.Command, args []string) error {
 
 // interactS3Bucket handles S3 bucket creation workflow
 func interactS3Bucket(provider string) error {
-	fmt.Printf("\n🪣 Creating S3 Bucket Configuration for %s\n", provider)
+	fmt.Printf("\nCreating S3 Bucket Configuration for %s\n", provider)
 	fmt.Println("==========================================")
 	fmt.Println()
 
 	// Check if provider is configured
 	if err := checkProviderConfig(provider); err != nil {
-		fmt.Printf("❌ Provider '%s' not configured. Run 'genesys config setup' first.\n", provider)
+		fmt.Printf("[ERROR] Provider '%s' not configured. Run 'genesys config setup' first.\n", provider)
 		return err
 	}
 
@@ -122,24 +122,24 @@ func interactS3Bucket(provider string) error {
 	}
 
 	// Generate configuration interactively
-	bucketConfig, fileName, err := s3Config.CreateBucketConfig()
+	bucketConfig, bucketName, err := s3Config.CreateBucketConfig()
 	if err != nil {
 		return fmt.Errorf("failed to create bucket configuration: %w", err)
 	}
 
 	// Save configuration
-	filePath, err := s3Config.SaveConfig(bucketConfig, fileName)
+	filePath, err := s3Config.SaveConfig(bucketConfig, bucketName)
 	if err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	fmt.Printf("✅ Configuration saved to: %s\n", filePath)
+	fmt.Printf("[OK] Configuration saved to: %s\n", filePath)
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Printf("  • Review the configuration: cat %s\n", fileName)
-	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", fileName)
-	fmt.Printf("  • Deploy the bucket: genesys execute %s\n", fileName)
-	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", fileName)
+	fmt.Printf("  • Review the configuration: cat %s\n", filePath)
+	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", filePath)
+	fmt.Printf("  • Deploy the bucket: genesys execute %s\n", filePath)
+	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", filePath)
 
 	return nil
 }

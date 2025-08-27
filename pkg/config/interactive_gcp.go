@@ -10,7 +10,7 @@ import (
 
 // getGCPCredentials interactively gets GCP credentials
 func (ic *InteractiveConfig) getGCPCredentials() (map[string]string, error) {
-	fmt.Println("\n📋 Google Cloud Platform Credential Configuration")
+	fmt.Println("\nGoogle Cloud Platform Credential Configuration")
 	fmt.Println("Choose your GCP authentication method:")
 	fmt.Println("  • Service Account Key: JSON file from GCP Console")
 	fmt.Println("  • Application Default Credentials: From gcloud CLI")

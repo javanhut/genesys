@@ -34,7 +34,7 @@ func (ic *InteractiveConfig) SaveProviderConfig(config *ProviderCredentials) err
 	// Set environment variables if not using local credentials
 	if !config.UseLocal && len(config.Credentials) > 0 {
 		if err := ic.setEnvironmentVariables(config); err != nil {
-			fmt.Printf("⚠️  Warning: Could not set environment variables: %v\n", err)
+			fmt.Printf("[WARNING] Could not set environment variables: %v\n", err)
 		}
 	}
 
