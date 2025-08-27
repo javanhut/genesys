@@ -43,6 +43,9 @@ type StorageService interface {
 	CreateBucket(ctx context.Context, config *BucketConfig) (*Bucket, error)
 	GetBucket(ctx context.Context, name string) (*Bucket, error)
 	DeleteBucket(ctx context.Context, name string) error
+	DeleteBucketWithOptions(ctx context.Context, name string, forceDelete bool) error
+	EmptyBucket(ctx context.Context, name string) error
+	EmptyBucketWithOptions(ctx context.Context, name string, forceDelete bool) error
 	ListBuckets(ctx context.Context) ([]*Bucket, error)
 
 	// Discovery

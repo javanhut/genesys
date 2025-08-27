@@ -18,12 +18,13 @@ import (
 )
 
 var (
-	applyFlag    bool
-	dryRunFlag   bool
-	configFile   string
-	providerName string
-	region       string
-	outputFormat string
+	applyFlag       bool
+	dryRunFlag      bool
+	forceDeletion   bool
+	configFile      string
+	providerName    string
+	region          string
+	outputFormat    string
 )
 
 // NewExecuteCommand creates the execute command
@@ -35,10 +36,11 @@ func NewExecuteCommand() *cobra.Command {
 Supports dry-run for safe preview before deployment.
 
 Examples:
-  genesys execute config.yaml                    # Deploy resources from config
-  genesys execute config.yaml --dry-run          # Preview changes without deployment
-  genesys execute deletion config.yaml           # Delete resources from config
-  genesys execute deletion config.yaml --dry-run # Preview deletion
+  genesys execute config.yaml                           # Deploy resources from config
+  genesys execute config.yaml --dry-run                 # Preview changes without deployment
+  genesys execute deletion config.yaml                  # Delete resources from config
+  genesys execute deletion config.yaml --dry-run        # Preview deletion
+  genesys execute deletion config.yaml --force-deletion # Force delete including all versions
 
 Legacy intent-based usage (for backwards compatibility):
   genesys execute bucket my-bucket --apply       # Create bucket from intent
@@ -49,6 +51,7 @@ Legacy intent-based usage (for backwards compatibility):
 
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "Apply the changes (default is preview only)")
 	cmd.Flags().BoolVar(&dryRunFlag, "dry-run", false, "Show what would be done without making changes")
+	cmd.Flags().BoolVar(&forceDeletion, "force-deletion", false, "Force delete bucket contents including all versions (use with deletion)")
 	cmd.Flags().StringVarP(&configFile, "config", "c", "", "Configuration file (YAML or TOML)")
 	cmd.Flags().StringVar(&providerName, "provider", "aws", "Cloud provider (aws|gcp|azure)")
 	cmd.Flags().StringVar(&region, "region", "", "Cloud region")
@@ -428,8 +431,17 @@ func executeS3Deletion(ctx context.Context, configPath string) error {
 	}
 
 	var s3Config config.S3BucketConfig
-	if err := yaml.Unmarshal(data, &s3Config); err != nil {
-		return fmt.Errorf("failed to parse S3 configuration: %w", err)
+	
+	// Try to parse based on file extension
+	if strings.HasSuffix(configPath, ".toml") {
+		if err := toml.Unmarshal(data, &s3Config); err != nil {
+			return fmt.Errorf("failed to parse S3 configuration as TOML: %w", err)
+		}
+	} else {
+		// Fall back to YAML for backward compatibility
+		if err := yaml.Unmarshal(data, &s3Config); err != nil {
+			return fmt.Errorf("failed to parse S3 configuration as YAML: %w", err)
+		}
 	}
 
 	bucketName := s3Config.Resources.Storage[0].Name
@@ -482,8 +494,20 @@ func executeS3Deletion(ctx context.Context, configPath string) error {
 	// Get storage service
 	storageService := provider.Storage()
 
-	// Delete bucket
-	if err := storageService.DeleteBucket(ctx, bucketName); err != nil {
+	// Delete bucket with force option if specified
+	if forceDeletion {
+		fmt.Printf("Force deletion mode enabled. This will delete all object versions and delete markers.\n")
+		err = storageService.DeleteBucketWithOptions(ctx, bucketName, true)
+	} else {
+		err = storageService.DeleteBucket(ctx, bucketName)
+	}
+	
+	if err != nil {
+		// Check if error is already formatted (starts with bucket deletion failed)
+		errStr := err.Error()
+		if strings.Contains(errStr, "bucket deletion failed") {
+			return fmt.Errorf("%s", errStr)
+		}
 		return fmt.Errorf("failed to delete S3 bucket: %w", err)
 	}
 

@@ -143,6 +143,18 @@ func (m *MockStorageService) DeleteBucket(ctx context.Context, name string) erro
 	return nil
 }
 
+func (m *MockStorageService) DeleteBucketWithOptions(ctx context.Context, name string, forceDelete bool) error {
+	return nil
+}
+
+func (m *MockStorageService) EmptyBucket(ctx context.Context, name string) error {
+	return nil
+}
+
+func (m *MockStorageService) EmptyBucketWithOptions(ctx context.Context, name string, forceDelete bool) error {
+	return nil
+}
+
 func (m *MockStorageService) ListBuckets(ctx context.Context) ([]*Bucket, error) {
 	return []*Bucket{}, nil
 }
