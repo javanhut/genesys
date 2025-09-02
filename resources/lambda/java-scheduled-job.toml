@@ -1,0 +1,34 @@
+[metadata]
+name = "data-processor"
+runtime = "java17"
+handler = "com.example.DataProcessor::handleRequest"
+description = "Scheduled data processing job"
+
+[build]
+source_path = "./jobs/data-processor"
+build_method = "podman"
+layer_auto = true
+requirements_file = "pom.xml"
+
+[function]
+memory_mb = 2048
+timeout_seconds = 300
+
+[function.environment]
+BATCH_SIZE = "1000"
+S3_BUCKET = "data-lake-bucket"
+OUTPUT_FORMAT = "parquet"
+
+[deployment]
+function_url = false
+cors_enabled = false
+auth_type = "AWS_IAM"
+
+[[triggers]]
+type = "schedule"
+schedule_expression = "rate(1 hour)"
+
+[layer]
+name = "data-processor-libs"
+description = "Java libraries for data processing"
+compatible_runtimes = ["java17"]

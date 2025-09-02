@@ -23,15 +23,15 @@ const (
 
 // Instance represents a compute instance (VM)
 type Instance struct {
-	ID             string
-	Name           string
-	Type           InstanceType
-	State          string
-	PrivateIP      string
-	PublicIP       string
-	Tags           map[string]string
-	CreatedAt      time.Time
-	ProviderData   map[string]interface{} // Provider-specific metadata
+	ID           string
+	Name         string
+	Type         InstanceType
+	State        string
+	PrivateIP    string
+	PublicIP     string
+	Tags         map[string]string
+	CreatedAt    time.Time
+	ProviderData map[string]interface{} // Provider-specific metadata
 }
 
 // InstanceConfig for creating/updating instances
@@ -49,14 +49,14 @@ type InstanceConfig struct {
 
 // Bucket represents object storage
 type Bucket struct {
-	Name           string
-	Region         string
-	Versioning     bool
-	Encryption     bool
-	PublicAccess   bool
-	Tags           map[string]string
-	CreatedAt      time.Time
-	ProviderData   map[string]interface{}
+	Name         string
+	Region       string
+	Versioning   bool
+	Encryption   bool
+	PublicAccess bool
+	Tags         map[string]string
+	CreatedAt    time.Time
+	ProviderData map[string]interface{}
 }
 
 // BucketConfig for creating/updating buckets
@@ -71,7 +71,7 @@ type BucketConfig struct {
 
 // LifecycleConfig for bucket lifecycle rules
 type LifecycleConfig struct {
-	DeleteAfterDays int
+	DeleteAfterDays  int
 	ArchiveAfterDays int
 }
 
@@ -157,15 +157,15 @@ type Database struct {
 
 // DatabaseConfig for creating/updating databases
 type DatabaseConfig struct {
-	Name          string
-	Engine        string
-	Version       string
-	Size          DatabaseSize
-	Storage       int
-	MultiAZ       bool
-	BackupConfig  *BackupConfig
-	Tags          map[string]string
-	MasterUser    string
+	Name           string
+	Engine         string
+	Version        string
+	Size           DatabaseSize
+	Storage        int
+	MultiAZ        bool
+	BackupConfig   *BackupConfig
+	Tags           map[string]string
+	MasterUser     string
 	MasterPassword string
 }
 
@@ -202,6 +202,7 @@ type FunctionConfig struct {
 	Code        FunctionCode
 	Triggers    []TriggerConfig
 	Tags        map[string]string
+	Role        string // IAM role ARN
 }
 
 // FunctionCode represents function deployment package
@@ -209,7 +210,9 @@ type FunctionCode struct {
 	ZipFile   []byte // Direct zip upload
 	S3Bucket  string // S3 location
 	S3Key     string
-	ImageURI  string // Container image
+	ImageURI  string   // Container image
+	LocalPath string   // Local path to ZIP file
+	Layers    []string // Layer ARNs to attach
 }
 
 // TriggerConfig for function triggers
@@ -224,4 +227,33 @@ type State struct {
 	Resources map[string]interface{}
 	Outputs   map[string]interface{}
 	UpdatedAt time.Time
+}
+
+// LambdaLayer represents a Lambda layer
+type LambdaLayer struct {
+	ID                 string
+	Name               string
+	Description        string
+	Version            int
+	CompatibleRuntimes []string
+	LayerArn           string
+	LayerVersionArn    string
+	CreatedAt          time.Time
+	ProviderData       map[string]interface{}
+}
+
+// LambdaLayerConfig for creating/updating layers
+type LambdaLayerConfig struct {
+	Name               string
+	Description        string
+	CompatibleRuntimes []string
+	Content            LayerContent
+}
+
+// LayerContent represents layer deployment package
+type LayerContent struct {
+	ZipFile   []byte // Direct zip upload
+	S3Bucket  string // S3 location
+	S3Key     string
+	LocalPath string // Local path to ZIP file
 }

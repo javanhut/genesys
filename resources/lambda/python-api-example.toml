@@ -1,0 +1,30 @@
+[metadata]
+name = "python-api-handler"
+runtime = "python3.11"
+handler = "app.lambda_handler"
+description = "Python API handler Lambda function"
+
+[build]
+source_path = "./src"
+build_method = "podman"
+layer_auto = true
+requirements_file = "requirements.txt"
+
+[function]
+memory_mb = 512
+timeout_seconds = 30
+
+[function.environment]
+API_VERSION = "v1"
+LOG_LEVEL = "INFO"
+DATABASE_URL = "postgresql://user:pass@host:5432/db"
+
+[deployment]
+function_url = true
+cors_enabled = true
+auth_type = "AWS_IAM"
+
+[layer]
+name = "python-api-deps"
+description = "Dependencies for Python API handler"
+compatible_runtimes = ["python3.11"]

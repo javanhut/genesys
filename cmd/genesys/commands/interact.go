@@ -73,7 +73,7 @@ func runInteract(cmd *cobra.Command, args []string) error {
 		Message: "What type of resource would you like to create?",
 		Options: []string{
 			"S3 Storage Bucket",
-			"Compute Instance", 
+			"Compute Instance",
 			"Database",
 			"Function",
 			"Network",
@@ -102,18 +102,13 @@ func runInteract(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-
 // interactS3Bucket handles S3 bucket creation workflow
 func interactS3Bucket(provider string) error {
 	fmt.Printf("\nCreating S3 Bucket Configuration for %s\n", provider)
 	fmt.Println("==========================================")
 	fmt.Println()
 
-	// Check if provider is configured
-	if err := checkProviderConfig(provider); err != nil {
-		fmt.Printf("[ERROR] Provider '%s' not configured. Run 'genesys config setup' first.\n", provider)
-		return err
-	}
+	// Note: No credential check needed for interactive mode - only for execution
 
 	// Use the existing S3 interactive configuration
 	s3Config, err := config.NewInteractiveS3Config()
@@ -144,31 +139,13 @@ func interactS3Bucket(provider string) error {
 	return nil
 }
 
-func checkProviderConfig(provider string) error {
-	interactiveConfig, err := config.NewInteractiveConfig()
-	if err != nil {
-		return fmt.Errorf("failed to initialize configuration: %w", err)
-	}
-
-	_, err = interactiveConfig.LoadProviderConfig(provider)
-	if err != nil {
-		return fmt.Errorf("provider '%s' not configured", provider)
-	}
-
-	return nil
-}
-
 // interactCompute handles EC2 instance creation workflow
 func interactCompute(provider string) error {
 	fmt.Printf("\nCreating EC2 Instance Configuration for %s\n", provider)
 	fmt.Println("==========================================")
 	fmt.Println()
 
-	// Check if provider is configured
-	if err := checkProviderConfig(provider); err != nil {
-		fmt.Printf("[ERROR] Provider '%s' not configured. Run 'genesys config setup' first.\n", provider)
-		return err
-	}
+	// Note: No credential check needed for interactive mode - only for execution
 
 	// Use the EC2 interactive configuration
 	ec2Config, err := config.NewInteractiveEC2Config()
@@ -205,7 +182,45 @@ func interactDatabase(provider string) error {
 }
 
 func interactFunction(provider string) error {
-	fmt.Printf("Function creation for %s not yet implemented\n", provider)
+	fmt.Printf("\nCreating Lambda Function Configuration for %s\n", provider)
+	fmt.Println("==========================================")
+	fmt.Println()
+
+	// Note: No credential check needed for interactive mode - only for execution
+
+	// Only AWS Lambda is currently supported
+	if provider != "aws" {
+		fmt.Printf("Lambda functions are currently only supported for AWS provider\n")
+		return nil
+	}
+
+	// Use the Lambda interactive configuration
+	lambdaConfig, err := config.NewInteractiveLambdaConfig()
+	if err != nil {
+		return fmt.Errorf("failed to initialize Lambda configuration: %w", err)
+	}
+
+	// Generate configuration interactively
+	functionConfig, functionName, err := lambdaConfig.CreateLambdaConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create Lambda configuration: %w", err)
+	}
+
+	// Save configuration
+	filePath, err := lambdaConfig.SaveConfig(functionConfig, functionName)
+	if err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("[OK] Configuration saved to: %s\n", filePath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Printf("  • Review the configuration: cat %s\n", filePath)
+	fmt.Printf("  • Build and test locally: genesys lambda build %s\n", filePath)
+	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", filePath)
+	fmt.Printf("  • Deploy the function: genesys execute %s\n", filePath)
+	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", filePath)
+
 	return nil
 }
 

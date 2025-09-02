@@ -16,6 +16,7 @@ type AWSProvider struct {
 	database   provider.DatabaseService
 	serverless provider.ServerlessService
 	state      provider.StateBackend
+	iam        *IAMService
 }
 
 // NewAWSProvider creates a new AWS provider instance
@@ -41,6 +42,7 @@ func NewAWSProvider(region string) (*AWSProvider, error) {
 	awsProvider.database = NewDatabaseService(awsProvider)
 	awsProvider.serverless = NewServerlessService(awsProvider)
 	awsProvider.state = NewStateBackend(awsProvider)
+	awsProvider.iam = NewIAMService(awsProvider)
 
 	return awsProvider, nil
 }
@@ -123,6 +125,11 @@ func (p *AWSProvider) GetRegion() string {
 // CreateClient creates a new AWS client for the specified service
 func (p *AWSProvider) CreateClient(service string) (*AWSClient, error) {
 	return NewAWSClient(p.region, service)
+}
+
+// IAM returns the IAM service
+func (p *AWSProvider) IAM() *IAMService {
+	return p.iam
 }
 
 // Init initializes the AWS provider factory
