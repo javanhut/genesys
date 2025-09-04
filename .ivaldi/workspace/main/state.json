@@ -1,0 +1,711 @@
+{
+  "root": "genesys",
+  "files": {
+    ".gitignore": {
+      "Path": ".gitignore",
+      "Status": 2,
+      "Hash": "blake3:765dbdc5a884777b1bd79c90c77fd4a1a5e2f05839e9b210e2726995f0c4f8d6",
+      "Size": 545,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:765dbdc5a884777b1bd79c90c77fd4a1a5e2f05839e9b210e2726995f0c4f8d6",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    ".ivaldiignore": {
+      "Path": ".ivaldiignore",
+      "Status": 2,
+      "Hash": "blake3:ecf552353b80f16df9b78596ddc1b3c0200c6f46986851104922a8cfe4d37308",
+      "Size": 420,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:ecf552353b80f16df9b78596ddc1b3c0200c6f46986851104922a8cfe4d37308",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "ARCHITECTURE.md": {
+      "Path": "ARCHITECTURE.md",
+      "Status": 2,
+      "Hash": "blake3:4a32c264acf53b1fec1f9465287d4c52ab8eb273f200ddd644d28316bd70575e",
+      "Size": 8324,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:4a32c264acf53b1fec1f9465287d4c52ab8eb273f200ddd644d28316bd70575e",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "Makefile": {
+      "Path": "Makefile",
+      "Status": 2,
+      "Hash": "blake3:2a546ab18408cc65d28d03483023d702d4691289195ae94d598432562044eb01",
+      "Size": 990,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:2a546ab18408cc65d28d03483023d702d4691289195ae94d598432562044eb01",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "README.md": {
+      "Path": "README.md",
+      "Status": 2,
+      "Hash": "blake3:c7b066bd5f36b859ce0bdfeea197e53cde6d84227756076d8512711d196907d3",
+      "Size": 13590,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:c7b066bd5f36b859ce0bdfeea197e53cde6d84227756076d8512711d196907d3",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "cmd/genesys/commands/config.go": {
+      "Path": "cmd/genesys/commands/config.go",
+      "Status": 2,
+      "Hash": "blake3:5c0429fe8960053ec17acb5f8a48d97558007dae7fb21414e59d3a65fbf4e520",
+      "Size": 8309,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:5c0429fe8960053ec17acb5f8a48d97558007dae7fb21414e59d3a65fbf4e520",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "cmd/genesys/commands/discover.go": {
+      "Path": "cmd/genesys/commands/discover.go",
+      "Status": 2,
+      "Hash": "blake3:0684f5b440fdccad42960e3a649afb07d92a1a5471aed59f44a58d35ebeb2d0c",
+      "Size": 13720,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:0684f5b440fdccad42960e3a649afb07d92a1a5471aed59f44a58d35ebeb2d0c",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "cmd/genesys/commands/execute.go": {
+      "Path": "cmd/genesys/commands/execute.go",
+      "Status": 2,
+      "Hash": "blake3:27c66b74a112b11b193c57d76e703dce1a148b1835c180e9c04243ce1d653d42",
+      "Size": 39962,
+      "ModTime": "2025-08-27T11:04:00.300789877-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:27c66b74a112b11b193c57d76e703dce1a148b1835c180e9c04243ce1d653d42",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "cmd/genesys/commands/interact.go": {
+      "Path": "cmd/genesys/commands/interact.go",
+      "Status": 2,
+      "Hash": "blake3:f20fc3c90ce247f462ab17c80768e06863461797cfc9021edd86403048f3f37c",
+      "Size": 6222,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:f20fc3c90ce247f462ab17c80768e06863461797cfc9021edd86403048f3f37c",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "cmd/genesys/commands/version.go": {
+      "Path": "cmd/genesys/commands/version.go",
+      "Status": 2,
+      "Hash": "blake3:49e5d087ae4c7107da55a2df30e7585753e904cd4e12cd32baa9c56b54551866",
+      "Size": 384,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:49e5d087ae4c7107da55a2df30e7585753e904cd4e12cd32baa9c56b54551866",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "cmd/genesys/main.go": {
+      "Path": "cmd/genesys/main.go",
+      "Status": 2,
+      "Hash": "blake3:907c6696c7ec71da3c0f531c00f2bd1e264f6feefeeac4c92b0b0051bfed79da",
+      "Size": 1448,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:907c6696c7ec71da3c0f531c00f2bd1e264f6feefeeac4c92b0b0051bfed79da",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/FEATURES.md": {
+      "Path": "docs/FEATURES.md",
+      "Status": 2,
+      "Hash": "blake3:b12bc937802f9b73b80b8942b6f303f7c592777b97ab5f6e9b5d525dd225c24c",
+      "Size": 16762,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:b12bc937802f9b73b80b8942b6f303f7c592777b97ab5f6e9b5d525dd225c24c",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/IMPLEMENTATION_PLAN.md": {
+      "Path": "docs/IMPLEMENTATION_PLAN.md",
+      "Status": 2,
+      "Hash": "blake3:0d7ffa47d80cd505d1d7e2fcd0ec9bb59c7c627a77d77a123b9fbafdbc2490bc",
+      "Size": 12303,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:0d7ffa47d80cd505d1d7e2fcd0ec9bb59c7c627a77d77a123b9fbafdbc2490bc",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/MVP_ARCHITECTURE.md": {
+      "Path": "docs/MVP_ARCHITECTURE.md",
+      "Status": 2,
+      "Hash": "blake3:3b51df6379972a7e2e6d56626968982505fb53e1591afa33c23af2ce5a7dbac0",
+      "Size": 8904,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:3b51df6379972a7e2e6d56626968982505fb53e1591afa33c23af2ce5a7dbac0",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/PROVIDER_ARCHITECTURE.md": {
+      "Path": "docs/PROVIDER_ARCHITECTURE.md",
+      "Status": 2,
+      "Hash": "blake3:fd52e388a7708d52a1cc0e36382fa3da3d1f7bf1bfe063e75a78d2c03d238211",
+      "Size": 21513,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:fd52e388a7708d52a1cc0e36382fa3da3d1f7bf1bfe063e75a78d2c03d238211",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/README.md": {
+      "Path": "docs/README.md",
+      "Status": 2,
+      "Hash": "blake3:f84813b2a1a56d7572f224ed34176c55f1536183ee70eae2ff44dc4186c1dfdd",
+      "Size": 2532,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:f84813b2a1a56d7572f224ed34176c55f1536183ee70eae2ff44dc4186c1dfdd",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/commands.md": {
+      "Path": "docs/commands.md",
+      "Status": 2,
+      "Hash": "blake3:db4a3b3a8066b9f8f24b4fda67beefcd05a4da36e58962d6ba29f10a2edcb6e0",
+      "Size": 5693,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:db4a3b3a8066b9f8f24b4fda67beefcd05a4da36e58962d6ba29f10a2edcb6e0",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/configuration.md": {
+      "Path": "docs/configuration.md",
+      "Status": 2,
+      "Hash": "blake3:90dd51d892e7ef31c9ba7e840ea1d3d068d70427865cddc25f131f0821c0f580",
+      "Size": 9381,
+      "ModTime": "2025-08-27T11:04:00.31277845-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:90dd51d892e7ef31c9ba7e840ea1d3d068d70427865cddc25f131f0821c0f580",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/ec2-workflow.md": {
+      "Path": "docs/ec2-workflow.md",
+      "Status": 2,
+      "Hash": "blake3:bb196ba4b11d15b2547c87ace4fb8517dae355aa491d7a8e84e8180461d82f40",
+      "Size": 11935,
+      "ModTime": "2025-08-27T11:04:00.324767022-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:bb196ba4b11d15b2547c87ace4fb8517dae355aa491d7a8e84e8180461d82f40",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/examples.md": {
+      "Path": "docs/examples.md",
+      "Status": 2,
+      "Hash": "blake3:8579b1939fb1d7ec016d8a5a45783d8a5dd59084819fbb4556530e7c10222a7a",
+      "Size": 12286,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:8579b1939fb1d7ec016d8a5a45783d8a5dd59084819fbb4556530e7c10222a7a",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/getting-started.md": {
+      "Path": "docs/getting-started.md",
+      "Status": 2,
+      "Hash": "blake3:1115eb6da418afa1f9c3bc2da1d9c272f9d7bee120700d3fe4abfc6c4e432f63",
+      "Size": 22685,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:1115eb6da418afa1f9c3bc2da1d9c272f9d7bee120700d3fe4abfc6c4e432f63",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/interactive-workflow.md": {
+      "Path": "docs/interactive-workflow.md",
+      "Status": 2,
+      "Hash": "blake3:4552eb0722d3546c4929a252308dceac12c5bc64a708c20cb5b851d76efe7572",
+      "Size": 8027,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:4552eb0722d3546c4929a252308dceac12c5bc64a708c20cb5b851d76efe7572",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "docs/s3-workflow.md": {
+      "Path": "docs/s3-workflow.md",
+      "Status": 2,
+      "Hash": "blake3:4e191f1d37af039c9669e132920415f9b2d710f3973a6d53aeb93881042ad3d8",
+      "Size": 7139,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:4e191f1d37af039c9669e132920415f9b2d710f3973a6d53aeb93881042ad3d8",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "examples/example.yaml": {
+      "Path": "examples/example.yaml",
+      "Status": 2,
+      "Hash": "blake3:c7886318cf467fb081f7e7602f6e7adc3513fb1f316a729bf409d8b57d73d2e0",
+      "Size": 1400,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:c7886318cf467fb081f7e7602f6e7adc3513fb1f316a729bf409d8b57d73d2e0",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "examples/multi-cloud.yaml": {
+      "Path": "examples/multi-cloud.yaml",
+      "Status": 2,
+      "Hash": "blake3:5d9ae559efa6f8e1067537bdc86392ae517f099b8708ac9cabb9ec5ee3f7eba1",
+      "Size": 684,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:5d9ae559efa6f8e1067537bdc86392ae517f099b8708ac9cabb9ec5ee3f7eba1",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "examples/serverless-api.yaml": {
+      "Path": "examples/serverless-api.yaml",
+      "Status": 2,
+      "Hash": "blake3:99b30956d3d4819a47780b801925ceb380e2b29db8950537784f7cd7e5a3fd43",
+      "Size": 1429,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:99b30956d3d4819a47780b801925ceb380e2b29db8950537784f7cd7e5a3fd43",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "examples/simple-website.yaml": {
+      "Path": "examples/simple-website.yaml",
+      "Status": 2,
+      "Hash": "blake3:b7fcb6ff35b2ae6df8e0ba47adfb3dbd3beb4856f0281815b442f0898cf6d247",
+      "Size": 307,
+      "ModTime": "2025-08-27T11:04:00.332759404-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:b7fcb6ff35b2ae6df8e0ba47adfb3dbd3beb4856f0281815b442f0898cf6d247",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "examples/web-application.toml": {
+      "Path": "examples/web-application.toml",
+      "Status": 2,
+      "Hash": "blake3:896c49a7f00229a7599eaa67b912e793381851f3f59ee28a16382a19bd2fe711",
+      "Size": 1349,
+      "ModTime": "2025-08-27T11:04:00.336755595-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:896c49a7f00229a7599eaa67b912e793381851f3f59ee28a16382a19bd2fe711",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "go.mod": {
+      "Path": "go.mod",
+      "Status": 2,
+      "Hash": "blake3:ad175d35fbcb5408ac73861d1045ec23b05cdc6605a57bbbd08a51a9b31be5e9",
+      "Size": 722,
+      "ModTime": "2025-08-27T11:04:00.340751786-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:ad175d35fbcb5408ac73861d1045ec23b05cdc6605a57bbbd08a51a9b31be5e9",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "go.sum": {
+      "Path": "go.sum",
+      "Status": 2,
+      "Hash": "blake3:1ff091bf587b3113c8f86f5191bf645ad6310b0a881a56da6d450d5a97b1a6b3",
+      "Size": 6471,
+      "ModTime": "2025-08-27T11:04:00.336755595-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:1ff091bf587b3113c8f86f5191bf645ad6310b0a881a56da6d450d5a97b1a6b3",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/config.go": {
+      "Path": "pkg/config/config.go",
+      "Status": 2,
+      "Hash": "blake3:2d20391cf3ca724ca98d77f3548f155f06f1937676376df54bd967f541826ce2",
+      "Size": 8577,
+      "ModTime": "2025-08-27T11:04:00.340751786-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:2d20391cf3ca724ca98d77f3548f155f06f1937676376df54bd967f541826ce2",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/config_test.go": {
+      "Path": "pkg/config/config_test.go",
+      "Status": 2,
+      "Hash": "blake3:59958847bfaa2f9191aebbe6125f77a209ca6249b791c4c619fd00b62e3586e2",
+      "Size": 5670,
+      "ModTime": "2025-08-27T11:04:00.336755595-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:59958847bfaa2f9191aebbe6125f77a209ca6249b791c4c619fd00b62e3586e2",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/defaults.go": {
+      "Path": "pkg/config/defaults.go",
+      "Status": 2,
+      "Hash": "blake3:0ae63bdeaa83e294341ee267ebd2a731da7dbd61f38e779d4a65abb36a83f194",
+      "Size": 4717,
+      "ModTime": "2025-08-27T11:04:00.340751786-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:0ae63bdeaa83e294341ee267ebd2a731da7dbd61f38e779d4a65abb36a83f194",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/ec2_interactive.go": {
+      "Path": "pkg/config/ec2_interactive.go",
+      "Status": 2,
+      "Hash": "blake3:e87ee0b8055591934c4ff9d2dd6eaa2d44cb479dae7ef901c310d67fa10db6f5",
+      "Size": 20327,
+      "ModTime": "2025-08-27T11:04:00.340751786-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:e87ee0b8055591934c4ff9d2dd6eaa2d44cb479dae7ef901c310d67fa10db6f5",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/interactive.go": {
+      "Path": "pkg/config/interactive.go",
+      "Status": 2,
+      "Hash": "blake3:453f9131f45ffa698cf0140797cfe9fef6105a1f1a95131be2fc1a2d19075227",
+      "Size": 8948,
+      "ModTime": "2025-08-27T11:04:00.340751786-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:453f9131f45ffa698cf0140797cfe9fef6105a1f1a95131be2fc1a2d19075227",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/interactive_aws.go": {
+      "Path": "pkg/config/interactive_aws.go",
+      "Status": 2,
+      "Hash": "blake3:f025f7283f13277a30f652380c6ddc52ef4e1906610f049045b0427766e01663",
+      "Size": 4553,
+      "ModTime": "2025-08-27T11:04:00.340751786-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:f025f7283f13277a30f652380c6ddc52ef4e1906610f049045b0427766e01663",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/interactive_azure.go": {
+      "Path": "pkg/config/interactive_azure.go",
+      "Status": 2,
+      "Hash": "blake3:6bbc6c40ddb0a605cd09c298a29deae0e581d80ebf3d25ed0b7c7f7345decc04",
+      "Size": 9110,
+      "ModTime": "2025-08-27T11:04:00.344747977-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:6bbc6c40ddb0a605cd09c298a29deae0e581d80ebf3d25ed0b7c7f7345decc04",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/interactive_gcp.go": {
+      "Path": "pkg/config/interactive_gcp.go",
+      "Status": 2,
+      "Hash": "blake3:e38021b210b56301559e24650d330efacc481b7fa124ef495d2909fb1ce467d9",
+      "Size": 7020,
+      "ModTime": "2025-08-27T11:04:00.344747977-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:e38021b210b56301559e24650d330efacc481b7fa124ef495d2909fb1ce467d9",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/interactive_storage.go": {
+      "Path": "pkg/config/interactive_storage.go",
+      "Status": 2,
+      "Hash": "blake3:a913ee044870b7c28c357c6a3549f697fde70bb070a1d64e256b999803603a20",
+      "Size": 8576,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:a913ee044870b7c28c357c6a3549f697fde70bb070a1d64e256b999803603a20",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/interactive_tencent.go": {
+      "Path": "pkg/config/interactive_tencent.go",
+      "Status": 2,
+      "Hash": "blake3:c8c20bdb13afa7dbc7f95445879022d9f3ff3e68a97f50d63354f12efdc79db6",
+      "Size": 4842,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:c8c20bdb13afa7dbc7f95445879022d9f3ff3e68a97f50d63354f12efdc79db6",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/pricing.go": {
+      "Path": "pkg/config/pricing.go",
+      "Status": 2,
+      "Hash": "blake3:b4bfaf0a26899630b404c2f6b4d82d62b60336694e89bae54b28ed09ed2fabd3",
+      "Size": 8297,
+      "ModTime": "2025-08-27T11:04:00.344747977-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:b4bfaf0a26899630b404c2f6b4d82d62b60336694e89bae54b28ed09ed2fabd3",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/s3_interactive.go": {
+      "Path": "pkg/config/s3_interactive.go",
+      "Status": 2,
+      "Hash": "blake3:7221acc01ebfb6623f130c16f80c2967014641400f64bad6e373d46311ae89e5",
+      "Size": 10994,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:7221acc01ebfb6623f130c16f80c2967014641400f64bad6e373d46311ae89e5",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/validation.go": {
+      "Path": "pkg/config/validation.go",
+      "Status": 2,
+      "Hash": "blake3:ff702b834572fc8800deab200cd33b17a36581c7328e56ee3fae76aadca9f054",
+      "Size": 6906,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:ff702b834572fc8800deab200cd33b17a36581c7328e56ee3fae76aadca9f054",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/config/validation_test.go": {
+      "Path": "pkg/config/validation_test.go",
+      "Status": 2,
+      "Hash": "blake3:ab4ce3035da5279d8b66ac2d5611c19a2617aca547280db7e8377839e42ad84f",
+      "Size": 7902,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:ab4ce3035da5279d8b66ac2d5611c19a2617aca547280db7e8377839e42ad84f",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/intent/parser.go": {
+      "Path": "pkg/intent/parser.go",
+      "Status": 2,
+      "Hash": "blake3:4200e261a6186c82e5738d6d327eb75a3e4de99ad199a5aaf4b327553b4febc8",
+      "Size": 9493,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:4200e261a6186c82e5738d6d327eb75a3e4de99ad199a5aaf4b327553b4febc8",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/intent/parser_test.go": {
+      "Path": "pkg/intent/parser_test.go",
+      "Status": 2,
+      "Hash": "blake3:e1fce7861e57d4062a5b75019aac56f3e0a43b1e922c1441dd882c553d1bf246",
+      "Size": 5373,
+      "ModTime": "2025-08-27T11:04:00.348744168-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:e1fce7861e57d4062a5b75019aac56f3e0a43b1e922c1441dd882c553d1bf246",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/planner/plan.go": {
+      "Path": "pkg/planner/plan.go",
+      "Status": 2,
+      "Hash": "blake3:4a5d459c32c3acba531f09edbb10a9e9861c3753b5639e7a0dc89a3eb8a2576b",
+      "Size": 11380,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:4a5d459c32c3acba531f09edbb10a9e9861c3753b5639e7a0dc89a3eb8a2576b",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/planner/plan_test.go": {
+      "Path": "pkg/planner/plan_test.go",
+      "Status": 2,
+      "Hash": "blake3:82cb0cca49b9009cc5dfd503de15f875ccff412a6bdf595bd0a376b7dfc443bf",
+      "Size": 6406,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:82cb0cca49b9009cc5dfd503de15f875ccff412a6bdf595bd0a376b7dfc443bf",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/planner/planner.go": {
+      "Path": "pkg/planner/planner.go",
+      "Status": 2,
+      "Hash": "blake3:eda4657c88b756f5b628281c8af2b0de367a7bd0228f57e52666acf535abbca4",
+      "Size": 14441,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:eda4657c88b756f5b628281c8af2b0de367a7bd0228f57e52666acf535abbca4",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/ami.go": {
+      "Path": "pkg/provider/aws/ami.go",
+      "Status": 2,
+      "Hash": "blake3:257398b45749dcc7a7a8b83ac94daeae7ab57b451b43805449069c41e81a29a4",
+      "Size": 12449,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:257398b45749dcc7a7a8b83ac94daeae7ab57b451b43805449069c41e81a29a4",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/client.go": {
+      "Path": "pkg/provider/aws/client.go",
+      "Status": 2,
+      "Hash": "blake3:64be11d6bbe7d47837f4755a73ceb7dde07990efe56c4967ce02d462f1a8d8ec",
+      "Size": 8280,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:64be11d6bbe7d47837f4755a73ceb7dde07990efe56c4967ce02d462f1a8d8ec",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/client.go.backup": {
+      "Path": "pkg/provider/aws/client.go.backup",
+      "Status": 2,
+      "Hash": "blake3:5edb188c733fd2e241097a4fa2b747fed4b2e9d2396a5e2640724dbebf3fb867",
+      "Size": 4816,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:5edb188c733fd2e241097a4fa2b747fed4b2e9d2396a5e2640724dbebf3fb867",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/compute.go": {
+      "Path": "pkg/provider/aws/compute.go",
+      "Status": 2,
+      "Hash": "blake3:cb141bd4368df2d074751285004d4f5fbd83063f6eb826e5210ce0d495699744",
+      "Size": 12836,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:cb141bd4368df2d074751285004d4f5fbd83063f6eb826e5210ce0d495699744",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/database.go": {
+      "Path": "pkg/provider/aws/database.go",
+      "Status": 2,
+      "Hash": "blake3:7bd4eab6349d1ecba10d8fcc1e2e8b09bd43043163c3370b94290cc393e599f6",
+      "Size": 9851,
+      "ModTime": "2025-08-27T11:04:00.352740358-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:7bd4eab6349d1ecba10d8fcc1e2e8b09bd43043163c3370b94290cc393e599f6",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/network.go": {
+      "Path": "pkg/provider/aws/network.go",
+      "Status": 2,
+      "Hash": "blake3:fe2f52d1073d9b9248b3bdd5cf5f642e2b17b881619919cd711778d4e021efb3",
+      "Size": 8557,
+      "ModTime": "2025-08-27T11:04:00.360732742-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:fe2f52d1073d9b9248b3bdd5cf5f642e2b17b881619919cd711778d4e021efb3",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/provider.go": {
+      "Path": "pkg/provider/aws/provider.go",
+      "Status": 2,
+      "Hash": "blake3:ac19e6a0495aa77c933ca59720d1b1d5fb42be261f34d6643478190dbd83b96f",
+      "Size": 3397,
+      "ModTime": "2025-08-27T11:04:00.360732742-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:ac19e6a0495aa77c933ca59720d1b1d5fb42be261f34d6643478190dbd83b96f",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/provider_test.go": {
+      "Path": "pkg/provider/aws/provider_test.go",
+      "Status": 2,
+      "Hash": "blake3:3f320c1d4151e22ba0e3650045d1b043cf96d6bf6d26a34ef3112fb951eaa507",
+      "Size": 2762,
+      "ModTime": "2025-08-27T11:04:00.360732742-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:3f320c1d4151e22ba0e3650045d1b043cf96d6bf6d26a34ef3112fb951eaa507",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/serverless.go": {
+      "Path": "pkg/provider/aws/serverless.go",
+      "Status": 2,
+      "Hash": "blake3:96152ddb95533fc3c1e9db8e8e0ac041c6ca830e8e41a497b2773bfa65e02ea3",
+      "Size": 9740,
+      "ModTime": "2025-08-27T11:04:00.364728932-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:96152ddb95533fc3c1e9db8e8e0ac041c6ca830e8e41a497b2773bfa65e02ea3",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/state.go": {
+      "Path": "pkg/provider/aws/state.go",
+      "Status": 2,
+      "Hash": "blake3:7a823458d88cea5670c3c98de3ca869370cc577c492a65ac7ecb5b8a0c687556",
+      "Size": 6390,
+      "ModTime": "2025-08-27T11:04:00.364728932-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:7a823458d88cea5670c3c98de3ca869370cc577c492a65ac7ecb5b8a0c687556",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/storage.go": {
+      "Path": "pkg/provider/aws/storage.go",
+      "Status": 2,
+      "Hash": "blake3:7f7057dc03af68ab36f464b2b1fb0297ca19afec0925cc5f70b3deb5af5e87c3",
+      "Size": 23548,
+      "ModTime": "2025-08-27T11:04:00.364728932-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:7f7057dc03af68ab36f464b2b1fb0297ca19afec0925cc5f70b3deb5af5e87c3",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/aws/storage.go.backup2": {
+      "Path": "pkg/provider/aws/storage.go.backup2",
+      "Status": 2,
+      "Hash": "blake3:414704ce33855df6c6623c6b8280dbc599532868ee84b47bd38a9519b4674bc9",
+      "Size": 11195,
+      "ModTime": "2025-08-27T11:04:00.364728932-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:414704ce33855df6c6623c6b8280dbc599532868ee84b47bd38a9519b4674bc9",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/interface.go": {
+      "Path": "pkg/provider/interface.go",
+      "Status": 2,
+      "Hash": "blake3:74d6305a8545f603b7bd9579d69cf0ebd653c13a5a5edf60cbbaba8acb08db1d",
+      "Size": 3614,
+      "ModTime": "2025-08-27T11:04:00.364728932-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:74d6305a8545f603b7bd9579d69cf0ebd653c13a5a5edf60cbbaba8acb08db1d",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/mock.go": {
+      "Path": "pkg/provider/mock.go",
+      "Status": 2,
+      "Hash": "blake3:c0c603a2db24ec284b0ebaa19eafe34bac96d5356bb69292df70a3efe2a6a5c4",
+      "Size": 10150,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:c0c603a2db24ec284b0ebaa19eafe34bac96d5356bb69292df70a3efe2a6a5c4",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/registry.go": {
+      "Path": "pkg/provider/registry.go",
+      "Status": 2,
+      "Hash": "blake3:55d2868f4780d524c3ee7e486ee54bd26acb88d38d3f4e4814fcc822167d61eb",
+      "Size": 1171,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:55d2868f4780d524c3ee7e486ee54bd26acb88d38d3f4e4814fcc822167d61eb",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/provider/resources.go": {
+      "Path": "pkg/provider/resources.go",
+      "Status": 2,
+      "Hash": "blake3:32a5fe9cd6cb188cc3f59e59d5f1c523b056f36e9bb59d44e44d829db3c4c1e0",
+      "Size": 5460,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:32a5fe9cd6cb188cc3f59e59d5f1c523b056f36e9bb59d44e44d829db3c4c1e0",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "pkg/state/local.go": {
+      "Path": "pkg/state/local.go",
+      "Status": 2,
+      "Hash": "blake3:48eb4ab65e38d295d8d83b3bff550324dbc29f890325c7fe4eeadde2a1ec194a",
+      "Size": 2940,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:48eb4ab65e38d295d8d83b3bff550324dbc29f890325c7fe4eeadde2a1ec194a",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "resources/ec2/genesys-ec2-creation.toml": {
+      "Path": "resources/ec2/genesys-ec2-creation.toml",
+      "Status": 2,
+      "Hash": "blake3:7ef64ddf542992f4c6d531308ff2b1884eac06e17c8978fd616a3fbeded19d11",
+      "Size": 366,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:7ef64ddf542992f4c6d531308ff2b1884eac06e17c8978fd616a3fbeded19d11",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "resources/ec2/test-genesys-ec2.toml": {
+      "Path": "resources/ec2/test-genesys-ec2.toml",
+      "Status": 2,
+      "Hash": "blake3:940b215a87573060c78b23233b74cb27c9ceea19b3e0874aaad4f727d356d8de",
+      "Size": 362,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:940b215a87573060c78b23233b74cb27c9ceea19b3e0874aaad4f727d356d8de",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "resources/s3/new_test_bucket.toml": {
+      "Path": "resources/s3/new_test_bucket.toml",
+      "Status": 2,
+      "Hash": "blake3:1056ba29103d12cb91015dbbee1e1768da594f116692f307fe4cfc29c598bdc2",
+      "Size": 401,
+      "ModTime": "2025-08-27T11:04:00.368725124-04:00",
+      "OnAnvil": false,
+      "WorkingHash": "blake3:1056ba29103d12cb91015dbbee1e1768da594f116692f307fe4cfc29c598bdc2",
+      "BlobHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "timeline": "main",
+  "position": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+  "anvil_files": {},
+  "ignore_patterns": [
+    "docs/CLAUDE.md",
+    "./genesys",
+    "genesys",
+    "CLAUDE.md",
+    ".claude",
+    ".claude",
+    "./.claude",
+    "Makefile.backup",
+    ".claude/settings.local.json",
+    ".ivaldi/*",
+    ".git/*"
+  ]
+}

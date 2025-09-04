@@ -1,0 +1,20 @@
+provider = "aws"
+region = "us-east-1"
+
+[resources]
+
+[[resources.storage]]
+name = "genesys-demo-bucket-20250827-test"
+type = "bucket"
+versioning = true
+encryption = true
+public_access = false
+[resources.storage.tags]
+Environment = "development"
+ManagedBy = "Genesys"
+Purpose = "demo"
+
+[policies]
+require_encryption = true
+no_public_buckets = true
+require_tags = ["Environment", "ManagedBy", "Purpose"]

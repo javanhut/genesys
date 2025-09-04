@@ -1,0 +1,19 @@
+# Added by ivaldi exclude command
+docs/CLAUDE.md
+# Added by ivaldi exclude command
+./genesys
+# Added by ivaldi exclude command
+genesys
+# Added by ivaldi exclude command
+CLAUDE.md
+# Added by ivaldi exclude command
+.claude
+# Added by ivaldi exclude command
+.claude
+# Added by ivaldi exclude command
+./.claude
+# Added by ivaldi exclude command
+Makefile.backup
+
+# Added by ivaldi exclude command
+.claude/settings.local.json

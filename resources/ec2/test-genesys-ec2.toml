@@ -1,0 +1,19 @@
+provider = "aws"
+region = "us-east-1"
+
+[resources]
+
+[[resources.compute]]
+name = "test-genesys-ec2"
+type = "t3.micro"
+image = "ubuntu-lts"
+count = 1
+[resources.compute.tags]
+Environment = "development"
+ManagedBy = "Genesys"
+Purpose = "demo"
+
+[policies]
+require_encryption = false
+no_public_instances = true
+require_tags = ["Environment", "ManagedBy", "Purpose"]

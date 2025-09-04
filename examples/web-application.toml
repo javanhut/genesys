@@ -1,0 +1,64 @@
+# Web application with auto-scaling
+# Example configuration for web application deployment
+# NOTE: Provider implementation removed - this is a template only
+
+[[resources.network]]
+name = "app-vpc"
+cidr = "10.0.0.0/16"
+tags = {Environment = "production", Team = "platform"}
+
+[[resources.network.subnets]]
+name = "public-1"
+cidr = "10.0.1.0/24"
+public = true
+
+[[resources.network.subnets]]
+name = "public-2"
+cidr = "10.0.2.0/24"
+public = true
+
+[[resources.network.subnets]]
+name = "private-1"
+cidr = "10.0.11.0/24"
+public = false
+
+[[resources.network.subnets]]
+name = "private-2"
+cidr = "10.0.12.0/24"
+public = false
+
+[[resources.compute]]
+name = "web-servers"
+type = "medium"
+image = "ubuntu-lts"
+count = 3
+network = "app-vpc"
+security_groups = ["web-sg"]
+tags = {Environment = "production", Team = "platform", Role = "webserver"}
+
+[[resources.database]]
+name = "app-database"
+engine = "postgres"
+version = "15"
+size = "medium"
+storage = 200
+multi_az = true
+[resources.database.backup]
+retention_days = 30
+window = "03:00-04:00"
+
+[[resources.storage]]
+name = "app-assets"
+type = "bucket"
+versioning = true
+encryption = true
+public_access = false
+[resources.storage.lifecycle]
+archive_after_days = 90
+delete_after_days = 365
+
+[policies]
+no_public_buckets = true
+require_encryption = true
+require_tags = ["Environment", "Team"]
+max_cost_per_month = 800
