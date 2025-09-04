@@ -101,7 +101,59 @@ The wizard will generate `ec2-my-dev-server-1234567890.toml` with cost estimates
 ./genesys execute ec2-my-dev-server-*.toml
 ```
 
-### Step 6: Manage Your Resources
+### Step 6: Deploy Your First Lambda Function
+
+```bash
+# Create a simple Python function directory
+mkdir -p MyLambdaCode
+cd MyLambdaCode
+
+# Create a simple Lambda function
+cat > lambda_function.py << 'EOF'
+def lambda_handler(event, context):
+    return {
+        'statusCode': 200,
+        'body': 'Hello from Genesys Lambda!'
+    }
+EOF
+
+# Create requirements.txt (can be empty)
+touch requirements.txt
+
+cd ..
+
+# Start interactive Lambda creation
+./genesys interact
+```
+
+Follow this workflow:
+1. **Provider**: Select `aws`
+2. **Resource Type**: Select `Lambda Function`
+3. **Configuration**:
+   - Function name: `my-first-function`
+   - Runtime: `python3.12`
+   - Source path: `MyLambdaCode`
+   - Function URL: `yes` (creates HTTPS endpoint)
+   - Memory: `512 MB` (default)
+   - Timeout: `30 seconds` (default)
+
+The wizard will generate `lambda-my-first-function-*.toml` and automatically:
+- Create IAM role with proper permissions
+- Build your code and dependencies
+- Deploy the Lambda function
+- Set up the Function URL
+
+```bash
+# Preview the Lambda deployment
+./genesys execute lambda-my-first-function-*.toml --dry-run
+
+# Deploy the Lambda function
+./genesys execute lambda-my-first-function-*.toml --apply
+```
+
+Success! Your Lambda is deployed with a public HTTPS URL you can test immediately.
+
+### Step 7: Manage Your Resources
 
 ```bash
 # List all resources you've created
@@ -114,9 +166,12 @@ The wizard will generate `ec2-my-dev-server-1234567890.toml` with cost estimates
 ./genesys list resources --service compute
 ```
 
-### Step 7: Clean Up (When Done)
+### Step 8: Clean Up (When Done)
 
 ```bash
+# Delete the Lambda function (includes IAM role cleanup)
+./genesys execute deletion lambda-my-first-function-*.toml
+
 # Delete the EC2 instance
 ./genesys execute deletion ec2-my-dev-server-*.toml
 
@@ -141,9 +196,15 @@ The wizard will generate `ec2-my-dev-server-1234567890.toml` with cost estimates
 - **Unique Names**: Built-in validation prevents duplicate instance names
 - **Storage Options**: Configurable EBS volumes with encryption
 
+#### AWS Serverless (Lambda)
+- **Lambda Functions**: Serverless compute with automatic dependency management
+- **Layer Support**: Automatic creation of dependency layers from requirements.txt
+- **IAM Integration**: Automatic role creation with least-privilege permissions
+- **Function URLs**: Direct HTTPS endpoints for Lambda functions
+- **Full Lifecycle**: Deploy code, dependencies, and infrastructure; clean up everything with one command
+
 ### Coming Soon
 - **Databases** - RDS instances with automated backups
-- **Functions** - Lambda/serverless compute
 - **Networks** - VPCs, subnets, security groups
 - **Multi-Cloud** - GCP, Azure, Tencent Cloud support
 
@@ -188,11 +249,16 @@ genesys config default aws          # Set default provider
 genesys execute config.yaml                    
 genesys execute config.toml
 
+# Deploy Lambda functions (includes --apply flag requirement)
+genesys execute lambda-function.toml --apply
+
 # Preview changes (safe - no actual deployment)
 genesys execute config.yaml --dry-run          
+genesys execute lambda-function.toml --dry-run
 
-# Delete resources
+# Delete resources (includes complete cleanup)
 genesys execute deletion config.yaml           
+genesys execute deletion lambda-function.toml  # Removes function, layer, and IAM role
 ```
 
 ### Resource Discovery
@@ -261,6 +327,45 @@ no_public_instances = true
 require_tags = ["Environment", "ManagedBy", "Purpose"]
 ```
 
+### Lambda Function Configuration (Auto-Generated)
+```toml
+[metadata]
+  name = "my-api-function"
+  runtime = "python3.12"
+  handler = "lambda_function.lambda_handler"
+  description = "Lambda function my-api-function created with Genesys"
+
+[build]
+  source_path = "/path/to/MyLambdaCode"
+  build_method = "podman"
+  layer_auto = true
+  requirements_file = "requirements.txt"
+
+[function]
+  memory_mb = 512
+  timeout_seconds = 30
+
+[deployment]
+  function_url = true
+  cors_enabled = true
+  auth_type = "AWS_IAM"
+  architecture = "x86_64"
+
+[layer]
+  name = "my-api-function-deps"
+  description = "Dependencies for my-api-function Lambda function (x86_64)"
+  compatible_runtimes = ["python3.12"]
+
+[iam]
+  role_name = "genesys-lambda-my-api-function"
+  required_policies = [
+    "Basic CloudWatch Logs access",
+    "Lambda full access"
+  ]
+  auto_manage = true
+  auto_cleanup = true
+```
+
 ## Real-World Examples
 
 ### Development Environment Setup
@@ -325,6 +430,85 @@ genesys execute s3-myapp-prod-storage-*.yaml
 # Step 5: Monitor and verify
 genesys list resources
 aws s3 ls s3://myapp-prod-storage
+```
+
+### Serverless API Development
+
+**Goal**: Deploy a Python API with Lambda functions and storage
+
+```bash
+# Step 1: Create your API code
+mkdir -p MyAPI
+cd MyAPI
+
+# Create main API handler
+cat > lambda_function.py << 'EOF'
+import json
+import boto3
+
+def lambda_handler(event, context):
+    # Simple API that returns user data
+    path = event.get('rawPath', '/')
+    method = event.get('requestContext', {}).get('http', {}).get('method', 'GET')
+    
+    if path == '/health' and method == 'GET':
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({'status': 'healthy', 'service': 'MyAPI'})
+        }
+    elif path == '/users' and method == 'GET':
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({
+                'users': [
+                    {'id': 1, 'name': 'Alice'},
+                    {'id': 2, 'name': 'Bob'}
+                ]
+            })
+        }
+    else:
+        return {
+            'statusCode': 404,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({'error': 'Not Found'})
+        }
+EOF
+
+# Create requirements for dependencies
+cat > requirements.txt << 'EOF'
+boto3>=1.26.0
+EOF
+
+cd ..
+
+# Step 2: Deploy Lambda API
+genesys interact
+# Provider: aws
+# Resource: Lambda Function
+# Name: my-api
+# Runtime: python3.12
+# Source: MyAPI
+# Function URL: yes
+# Memory: 512 MB
+
+# Step 3: Deploy with dry-run first
+genesys execute lambda-my-api-*.toml --dry-run
+genesys execute lambda-my-api-*.toml --apply
+
+# Step 4: Test your API
+curl https://your-function-url.lambda-url.us-east-1.on.aws/health
+curl https://your-function-url.lambda-url.us-east-1.on.aws/users
+
+# Step 5: Create storage for the API
+genesys interact
+# Provider: aws  
+# Resource: S3 Storage Bucket
+# Name: my-api-data-bucket
+# Versioning: yes, Encryption: yes
+
+genesys execute s3-my-api-data-bucket-*.yaml --apply
 ```
 
 ### Multi-Environment Management

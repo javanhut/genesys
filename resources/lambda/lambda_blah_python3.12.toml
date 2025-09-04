@@ -1,0 +1,34 @@
+[metadata]
+  name = "blah"
+  runtime = "python3.12"
+  handler = "lambda_function.lambda_handler"
+  description = "Lambda function blah created with Genesys"
+
+[build]
+  source_path = "/home/javanhut/TestLambdaCode"
+  build_method = "podman"
+  layer_auto = true
+  requirements_file = "requirements.txt"
+
+[function]
+  memory_mb = 512
+  timeout_seconds = 30
+
+[deployment]
+  function_url = true
+  cors_enabled = true
+  auth_type = "AWS_IAM"
+  architecture = "x86_64"
+
+[layer]
+  name = "blah-deps"
+  description = "Dependencies for blah Lambda function (x86_64)"
+  compatible_runtimes = ["python3.12"]
+
+[iam]
+  role_name = "genesys-lambda-blah"
+  role_arn = "arn:aws:iam::859885917020:role/genesys-lambda-blah"
+  required_policies = ["Basic CloudWatch Logs access", "Lambda full access"]
+  auto_manage = true
+  auto_cleanup = true
+  managed_by = "genesys"

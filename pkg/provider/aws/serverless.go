@@ -2,8 +2,13 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/javanhut/genesys/pkg/provider"
@@ -23,17 +28,17 @@ func NewServerlessService(p *AWSProvider) *ServerlessService {
 
 // Lambda API response structures
 type LambdaFunction struct {
-	FunctionName     string            `json:"FunctionName"`
-	FunctionArn      string            `json:"FunctionArn"`
-	Runtime          string            `json:"Runtime"`
-	Handler          string            `json:"Handler"`
-	CodeSize         int64             `json:"CodeSize"`
-	Description      string            `json:"Description"`
-	Timeout          int               `json:"Timeout"`
-	MemorySize       int               `json:"MemorySize"`
-	LastModified     string            `json:"LastModified"`
-	State            string            `json:"State"`
-	Environment      *Environment      `json:"Environment,omitempty"`
+	FunctionName string       `json:"FunctionName"`
+	FunctionArn  string       `json:"FunctionArn"`
+	Runtime      string       `json:"Runtime"`
+	Handler      string       `json:"Handler"`
+	CodeSize     int64        `json:"CodeSize"`
+	Description  string       `json:"Description"`
+	Timeout      int          `json:"Timeout"`
+	MemorySize   int          `json:"MemorySize"`
+	LastModified string       `json:"LastModified"`
+	State        string       `json:"State"`
+	Environment  *Environment `json:"Environment,omitempty"`
 }
 
 type Environment struct {
@@ -41,8 +46,8 @@ type Environment struct {
 }
 
 type ListFunctionsResponse struct {
-	Functions    []LambdaFunction `json:"Functions"`
-	NextMarker   string           `json:"NextMarker,omitempty"`
+	Functions  []LambdaFunction `json:"Functions"`
+	NextMarker string           `json:"NextMarker,omitempty"`
 }
 
 // CreateFunction creates a new Lambda function
@@ -59,9 +64,40 @@ func (s *ServerlessService) CreateFunction(ctx context.Context, config *provider
 		"Handler":      config.Handler,
 		"MemorySize":   config.Memory,
 		"Timeout":      config.Timeout,
-		"Code": map[string]interface{}{
-			"ZipFile": s.createDummyZip(), // Basic dummy function
-		},
+	}
+
+	// Role must be provided by the caller
+	if config.Role == "" {
+		return nil, fmt.Errorf("IAM role ARN is required")
+	}
+	requestBody["Role"] = config.Role
+
+	// Handle code upload
+	if config.Code.LocalPath != "" {
+		// Read ZIP file from local path
+		zipData, err := os.ReadFile(config.Code.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read function ZIP: %w", err)
+		}
+		requestBody["Code"] = map[string]interface{}{
+			"ZipFile": base64.StdEncoding.EncodeToString(zipData),
+		}
+	} else if config.Code.S3Bucket != "" && config.Code.S3Key != "" {
+		// Use S3 location
+		requestBody["Code"] = map[string]interface{}{
+			"S3Bucket": config.Code.S3Bucket,
+			"S3Key":    config.Code.S3Key,
+		}
+	} else if len(config.Code.ZipFile) > 0 {
+		// Use provided ZIP data
+		requestBody["Code"] = map[string]interface{}{
+			"ZipFile": base64.StdEncoding.EncodeToString(config.Code.ZipFile),
+		}
+	} else {
+		// Use dummy function for testing
+		requestBody["Code"] = map[string]interface{}{
+			"ZipFile": s.createDummyZip(),
+		}
 	}
 
 	if config.Environment != nil && len(config.Environment) > 0 {
@@ -70,23 +106,54 @@ func (s *ServerlessService) CreateFunction(ctx context.Context, config *provider
 		}
 	}
 
+	// Add layers if specified
+	if len(config.Code.Layers) > 0 {
+		requestBody["Layers"] = config.Code.Layers
+	}
+
 	// Convert to JSON
 	body, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Make the request
-	resp, err := client.Request("POST", "/2015-03-31/functions", nil, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create function: %w", err)
+	// Make the request with retry for role assumption issues
+	var resp *http.Response
+	var lastErr error
+	
+	maxRetries := 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		resp, err = client.Request("POST", "/2015-03-31/functions", nil, body)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create function: %w", err)
+			continue
+		}
+		
+		if resp.StatusCode == 201 {
+			break // Success
+		}
+		
+		// Check if it's a role assumption error
+		responseBody, _ := ReadResponse(resp)
+		responseStr := string(responseBody)
+		
+		if resp.StatusCode == 400 && strings.Contains(responseStr, "cannot be assumed by Lambda") {
+			if attempt < maxRetries-1 {
+				// Wait before retrying (IAM propagation delay)
+				time.Sleep(time.Duration(2*(attempt+1)) * time.Second)
+				resp.Body.Close()
+				continue
+			}
+		}
+		
+		resp.Body.Close()
+		return nil, fmt.Errorf("CreateFunction failed with status %d: %s", resp.StatusCode, responseStr)
+	}
+	
+	if resp == nil {
+		return nil, fmt.Errorf("failed to create function after %d attempts: %v", maxRetries, lastErr)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != 201 {
-		responseBody, _ := ReadResponse(resp)
-		return nil, fmt.Errorf("CreateFunction failed with status %d: %s", resp.StatusCode, string(responseBody))
-	}
 
 	// Parse response
 	responseBody, err := ReadResponse(resp)
@@ -283,9 +350,106 @@ func (s *ServerlessService) createDummyZip() []byte {
         'statusCode': 200,
         'body': 'Hello from Lambda!'
     }`
-	
+
 	// For now, just return the code as bytes - proper ZIP handling would be needed
 	return []byte(dummyCode)
+}
+
+// CreateLayer creates a new Lambda layer
+func (s *ServerlessService) CreateLayer(ctx context.Context, config *provider.LambdaLayerConfig) (*provider.LambdaLayer, error) {
+	client, err := s.provider.CreateClient("lambda")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Lambda client: %w", err)
+	}
+
+	// Build request body
+	requestBody := map[string]interface{}{
+		"LayerName":          config.Name,
+		"Description":        config.Description,
+		"CompatibleRuntimes": config.CompatibleRuntimes,
+	}
+
+	// Handle content upload
+	if config.Content.LocalPath != "" {
+		// Read ZIP file from local path
+		zipData, err := os.ReadFile(config.Content.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read layer ZIP: %w", err)
+		}
+		requestBody["Content"] = map[string]interface{}{
+			"ZipFile": base64.StdEncoding.EncodeToString(zipData),
+		}
+	} else if config.Content.S3Bucket != "" && config.Content.S3Key != "" {
+		// Use S3 location
+		requestBody["Content"] = map[string]interface{}{
+			"S3Bucket": config.Content.S3Bucket,
+			"S3Key":    config.Content.S3Key,
+		}
+	} else if len(config.Content.ZipFile) > 0 {
+		// Use provided ZIP data
+		requestBody["Content"] = map[string]interface{}{
+			"ZipFile": base64.StdEncoding.EncodeToString(config.Content.ZipFile),
+		}
+	} else {
+		return nil, fmt.Errorf("no layer content provided")
+	}
+
+	// Convert to JSON
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Make the request - layers API requires layer name in path
+	endpoint := fmt.Sprintf("/2018-10-31/layers/%s/versions", config.Name)
+	resp, err := client.Request("POST", endpoint, nil, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create layer: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Parse response
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("CreateLayer failed with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	var layerResp struct {
+		LayerArn        string `json:"LayerArn"`
+		LayerVersionArn string `json:"LayerVersionArn"`
+		Version         int    `json:"Version"`
+		CreatedDate     string `json:"CreatedDate"`
+	}
+	if err := json.Unmarshal(responseBody, &layerResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Convert to provider layer
+	createdAt := time.Now()
+	if layerResp.CreatedDate != "" {
+		if t, err := time.Parse(time.RFC3339, layerResp.CreatedDate); err == nil {
+			createdAt = t
+		}
+	}
+
+	return &provider.LambdaLayer{
+		ID:                 config.Name,
+		Name:               config.Name,
+		Description:        config.Description,
+		Version:            layerResp.Version,
+		CompatibleRuntimes: config.CompatibleRuntimes,
+		LayerArn:           layerResp.LayerArn,
+		LayerVersionArn:    layerResp.LayerVersionArn,
+		CreatedAt:          createdAt,
+		ProviderData: map[string]interface{}{
+			"layerArn":        layerResp.LayerArn,
+			"layerVersionArn": layerResp.LayerVersionArn,
+		},
+	}, nil
 }
 
 func (s *ServerlessService) convertToProviderFunction(lambdaFunc LambdaFunction, tags map[string]string) *provider.Function {
@@ -306,7 +470,7 @@ func (s *ServerlessService) convertToProviderFunction(lambdaFunc LambdaFunction,
 	}
 
 	// Generate a simple URL for the function
-	functionURL := fmt.Sprintf("https://%s.lambda-url.%s.on.aws/", 
+	functionURL := fmt.Sprintf("https://%s.lambda-url.%s.on.aws/",
 		lambdaFunc.FunctionName, s.provider.region)
 
 	return &provider.Function{

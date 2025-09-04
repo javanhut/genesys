@@ -105,6 +105,30 @@ func loadAWSCredentialsFromConfig() (*ProviderCredentials, error) {
 	return &creds, nil
 }
 
+// isGlobalService returns true if the AWS service is global and doesn't use regional endpoints
+func isGlobalService(service string) bool {
+	globalServices := map[string]bool{
+		"iam":              true,
+		"sts":              true,
+		"cloudfront":       true,
+		"waf":              true,
+		"route53":          true,
+		"route53resolver":  false, // Regional
+		"shield":           true,
+		"support":          true,
+		"trustedadvisor":   true,
+	}
+	return globalServices[service]
+}
+
+// getSigningRegion returns the region to use for AWS signing - us-east-1 for global services
+func (c *AWSClient) getSigningRegion() string {
+	if isGlobalService(c.Service) {
+		return "us-east-1"
+	}
+	return c.Region
+}
+
 // RequestWithMD5 makes an authenticated AWS API request with Content-MD5 header
 func (c *AWSClient) RequestWithMD5(method, endpoint string, params map[string]string, body []byte) (*http.Response, error) {
 	return c.requestInternal(method, endpoint, params, body, true)
@@ -117,29 +141,48 @@ func (c *AWSClient) Request(method, endpoint string, params map[string]string, b
 
 // requestInternal is the internal request method
 func (c *AWSClient) requestInternal(method, endpoint string, params map[string]string, body []byte, includeMD5 bool) (*http.Response, error) {
-	// Build URL
-	baseURL := fmt.Sprintf("https://%s.%s.amazonaws.com", c.Service, c.Region)
+	// Build URL - handle global services that don't use regional endpoints
+	var baseURL string
+	if isGlobalService(c.Service) {
+		baseURL = fmt.Sprintf("https://%s.amazonaws.com", c.Service)
+	} else {
+		baseURL = fmt.Sprintf("https://%s.%s.amazonaws.com", c.Service, c.Region)
+	}
 	if endpoint != "" {
-		baseURL += "/" + strings.TrimPrefix(endpoint, "/")
+		// Don't add extra slash if endpoint already starts with one
+		if !strings.HasPrefix(endpoint, "/") {
+			baseURL += "/"
+		}
+		baseURL += endpoint
 	}
 
-	// Add query parameters
+	// Handle parameters based on service and method
+	var requestBody []byte
 	if len(params) > 0 {
 		values := url.Values{}
 		for k, v := range params {
 			values.Add(k, v)
 		}
-		baseURL += "?" + values.Encode()
+		
+		// For IAM/STS POST requests, put parameters in the body, otherwise in query string
+		if (c.Service == "iam" || c.Service == "sts") && method == "POST" {
+			requestBody = []byte(values.Encode())
+		} else {
+			baseURL += "?" + values.Encode()
+			requestBody = body
+		}
+	} else {
+		requestBody = body
 	}
 
 	// Create request
-	req, err := http.NewRequest(method, baseURL, bytes.NewReader(body))
+	req, err := http.NewRequest(method, baseURL, bytes.NewReader(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Calculate payload hash for x-amz-content-sha256
-	payloadHash := fmt.Sprintf("%x", sha256.Sum256(body))
+	payloadHash := fmt.Sprintf("%x", sha256.Sum256(requestBody))
 
 	// Set headers
 	if c.Service == "s3" {
@@ -148,12 +191,15 @@ func (c *AWSClient) requestInternal(method, endpoint string, params map[string]s
 			req.Header.Set("Content-Type", "application/xml")
 		}
 		req.Header.Set("x-amz-content-sha256", payloadHash)
-		
+
 		// Add Content-MD5 header if requested (required for some S3 operations like tagging)
 		if includeMD5 && len(body) > 0 {
 			md5sum := md5.Sum(body)
 			req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(md5sum[:]))
 		}
+	} else if c.Service == "iam" || c.Service == "sts" {
+		// IAM and STS use form encoding for POST requests
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
 	} else {
 		req.Header.Set("Content-Type", "application/x-amz-json-1.1")
 	}
@@ -163,7 +209,7 @@ func (c *AWSClient) requestInternal(method, endpoint string, params map[string]s
 	}
 
 	// Sign the request
-	if err := c.signRequest(req, body); err != nil {
+	if err := c.signRequest(req, requestBody); err != nil {
 		return nil, fmt.Errorf("failed to sign request: %w", err)
 	}
 
@@ -196,7 +242,7 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 	// Create canonical headers - need to be sorted alphabetically
 	headerMap := make(map[string]string)
 	var headerNames []string
-	
+
 	// Add all headers
 	for name, values := range req.Header {
 		lowerName := strings.ToLower(name)
@@ -205,7 +251,7 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 			headerNames = append(headerNames, lowerName)
 		}
 	}
-	
+
 	// Add host header (required)
 	if req.URL.Host != "" {
 		headerMap["host"] = req.URL.Host
@@ -215,16 +261,16 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 	if !contains(headerNames, "host") {
 		headerNames = append(headerNames, "host")
 	}
-	
+
 	// Sort header names
 	sort.Strings(headerNames)
-	
+
 	// Build canonical headers string
 	canonicalHeaders := ""
 	for _, name := range headerNames {
 		canonicalHeaders += name + ":" + headerMap[name] + "\n"
 	}
-	
+
 	signedHeaders := strings.Join(headerNames, ";")
 
 	// Create payload hash
@@ -242,7 +288,8 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 
 	// Create string to sign
 	algorithm := "AWS4-HMAC-SHA256"
-	credentialScope := datestamp + "/" + c.Region + "/" + c.Service + "/aws4_request"
+	signingRegion := c.getSigningRegion()
+	credentialScope := datestamp + "/" + signingRegion + "/" + c.Service + "/aws4_request"
 	stringToSign := strings.Join([]string{
 		algorithm,
 		timestamp,
@@ -251,7 +298,7 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 	}, "\n")
 
 	// Calculate signature
-	signature := c.calculateSignature(stringToSign, datestamp)
+	signature := c.calculateSignature(stringToSign, datestamp, signingRegion)
 
 	// Create authorization header
 	authorizationHeader := algorithm + " " +
@@ -265,9 +312,9 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 }
 
 // calculateSignature calculates the AWS4-HMAC-SHA256 signature
-func (c *AWSClient) calculateSignature(stringToSign, datestamp string) string {
+func (c *AWSClient) calculateSignature(stringToSign, datestamp, signingRegion string) string {
 	kDate := hmacSHA256([]byte("AWS4"+c.SecretKey), datestamp)
-	kRegion := hmacSHA256(kDate, c.Region)
+	kRegion := hmacSHA256(kDate, signingRegion)
 	kService := hmacSHA256(kRegion, c.Service)
 	kSigning := hmacSHA256(kService, "aws4_request")
 	signature := hmacSHA256(kSigning, stringToSign)

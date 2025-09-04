@@ -1,0 +1,34 @@
+[metadata]
+name = "user-service"
+runtime = "go1.x"
+handler = "main"
+description = "User microservice Lambda function"
+
+[build]
+source_path = "./services/user"
+build_method = "podman"
+layer_auto = false  # Go compiles dependencies into binary
+
+[function]
+memory_mb = 128
+timeout_seconds = 15
+
+[function.environment]
+SERVICE_NAME = "user-service"
+DDB_TABLE = "users"
+REGION = "us-east-1"
+
+[deployment]
+function_url = false
+cors_enabled = false
+auth_type = "AWS_IAM"
+
+[[triggers]]
+type = "api_gateway"
+path = "/users/{id}"
+method = "GET"
+
+[[triggers]]
+type = "api_gateway"
+path = "/users"
+method = "POST"

@@ -1,0 +1,20 @@
+[metadata]
+  name = "TestSimple"
+  runtime = "python3.12"
+  handler = "lambda_function.lambda_handler"
+  description = "Simple Lambda function TestSimple created with Genesys"
+
+[build]
+  source_path = "/home/javanhut/TestLambdaCode"
+  build_method = "podman"
+  layer_auto = false
+
+[function]
+  memory_mb = 256
+  timeout_seconds = 15
+
+[deployment]
+  function_url = true
+  cors_enabled = true
+  auth_type = "AWS_IAM"
+  architecture = "x86_64"

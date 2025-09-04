@@ -1,0 +1,35 @@
+[metadata]
+name = "webhook-processor"
+runtime = "nodejs20.x"
+handler = "index.handler"
+description = "Webhook processor Lambda function"
+
+[build]
+source_path = "./webhook-app"
+build_method = "podman"
+layer_auto = true
+requirements_file = "package.json"
+
+[function]
+memory_mb = 256
+timeout_seconds = 60
+
+[function.environment]
+WEBHOOK_SECRET = "your-webhook-secret"
+QUEUE_URL = "https://sqs.region.amazonaws.com/account/queue"
+MAX_RETRIES = "3"
+
+[deployment]
+function_url = true
+cors_enabled = false
+auth_type = "NONE"
+
+[[triggers]]
+type = "api_gateway"
+path = "/webhook"
+method = "POST"
+
+[layer]
+name = "webhook-processor-deps"
+description = "Dependencies for webhook processor"
+compatible_runtimes = ["nodejs20.x"]

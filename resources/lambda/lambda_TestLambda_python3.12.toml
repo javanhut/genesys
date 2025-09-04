@@ -1,0 +1,26 @@
+[metadata]
+  name = "TestLambda"
+  runtime = "python3.12"
+  handler = "lambda_function.lambda_handler"
+  description = "Lambda function TestLambda created with Genesys"
+
+[build]
+  source_path = "/home/javanhut/TestLambdaCode"
+  build_method = "podman"
+  layer_auto = true
+  requirements_file = "requirements.txt"
+
+[function]
+  memory_mb = 512
+  timeout_seconds = 30
+
+[deployment]
+  function_url = true
+  cors_enabled = true
+  auth_type = "AWS_IAM"
+  architecture = "arm64"
+
+[layer]
+  name = "TestLambda-deps-arm64"
+  description = "Dependencies for TestLambda Lambda function (arm64)"
+  compatible_runtimes = ["python3.12"]
