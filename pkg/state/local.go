@@ -15,14 +15,14 @@ type LocalState struct {
 
 // ResourceRecord represents a created resource
 type ResourceRecord struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"` // "ec2", "s3", etc.
-	Region       string    `json:"region"`
-	Provider     string    `json:"provider"`
-	ConfigFile   string    `json:"config_file"`
-	CreatedAt    time.Time `json:"created_at"`
-	Tags         map[string]string `json:"tags,omitempty"`
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Type       string            `json:"type"` // "ec2", "s3", etc.
+	Region     string            `json:"region"`
+	Provider   string            `json:"provider"`
+	ConfigFile string            `json:"config_file"`
+	CreatedAt  time.Time         `json:"created_at"`
+	Tags       map[string]string `json:"tags,omitempty"`
 }
 
 const stateFileName = ".genesys-state.json"
@@ -36,38 +36,38 @@ func getStateFilePath() string {
 // LoadLocalState loads the local state from disk
 func LoadLocalState() (*LocalState, error) {
 	statePath := getStateFilePath()
-	
+
 	// If file doesn't exist, return empty state
 	if _, err := os.Stat(statePath); os.IsNotExist(err) {
 		return &LocalState{Resources: []ResourceRecord{}}, nil
 	}
-	
+
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read state file: %w", err)
 	}
-	
+
 	var state LocalState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("failed to parse state file: %w", err)
 	}
-	
+
 	return &state, nil
 }
 
 // SaveLocalState saves the local state to disk
 func (s *LocalState) SaveLocalState() error {
 	statePath := getStateFilePath()
-	
+
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
-	
+
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write state file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -108,4 +108,29 @@ func (s *LocalState) FindResourcesByConfigFile(configFile string) []ResourceReco
 		}
 	}
 	return found
+}
+
+// RefreshLocalState reloads the state from disk
+func RefreshLocalState() (*LocalState, error) {
+	return LoadLocalState()
+}
+
+// SyncWithRemote syncs local state with remote state backend (placeholder for future implementation)
+func (s *LocalState) SyncWithRemote() error {
+	// TODO: Implement remote state synchronization
+	// For now, just reload from disk
+	newState, err := LoadLocalState()
+	if err != nil {
+		return fmt.Errorf("failed to refresh local state: %w", err)
+	}
+
+	s.Resources = newState.Resources
+	return nil
+}
+
+// ValidateResources checks if tracked resources still exist
+func (s *LocalState) ValidateResources() ([]ResourceRecord, error) {
+	// TODO: Implement actual resource validation against cloud providers
+	// For now, return all resources as valid
+	return s.Resources, nil
 }

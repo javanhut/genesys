@@ -92,7 +92,7 @@ func (s *StateBackend) Unlock(ctx context.Context, key string) error {
 
 	lockKey := key + ".lock"
 	endpoint := fmt.Sprintf("/%s/%s", s.bucketName, lockKey)
-	
+
 	resp, err := client.Request("DELETE", endpoint, nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete lock: %w", err)
@@ -158,7 +158,7 @@ func (s *StateBackend) Write(ctx context.Context, key string, state *provider.St
 	}
 
 	state.UpdatedAt = time.Now()
-	
+
 	data, err := json.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("failed to marshal state: %w", err)
@@ -182,7 +182,7 @@ func (s *StateBackend) Write(ctx context.Context, key string, state *provider.St
 // createStateBucket creates the S3 bucket for state storage
 func (s *StateBackend) createStateBucket(client *AWSClient) error {
 	endpoint := fmt.Sprintf("/%s", s.bucketName)
-	
+
 	var body []byte
 	if s.provider.region != "us-east-1" {
 		// Need to specify location constraint for regions other than us-east-1
@@ -214,6 +214,55 @@ func (s *StateBackend) createStateBucket(client *AWSClient) error {
 	if versioningResp.StatusCode != 200 {
 		responseBody, _ := ReadResponse(versioningResp)
 		return fmt.Errorf("failed to enable versioning with status %d: %s", versioningResp.StatusCode, string(responseBody))
+	}
+
+	return nil
+}
+
+// Refresh forces a refresh of the state from the remote storage
+func (s *StateBackend) Refresh(ctx context.Context, key string) (*provider.State, error) {
+	// This is essentially the same as Read, but we ensure no local caching
+	return s.Read(ctx, key)
+}
+
+// ListStates lists all available state keys in the bucket
+func (s *StateBackend) ListStates(ctx context.Context) ([]string, error) {
+	client, err := s.provider.CreateClient("s3")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 client: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("/%s", s.bucketName)
+	resp, err := client.Request("GET", endpoint, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list objects: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return nil, fmt.Errorf("failed to list objects with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	// Parse S3 ListObjects response (simplified)
+	// TODO: Implement proper XML parsing for S3 ListObjects response
+	var keys []string
+	return keys, nil
+}
+
+// ValidateState checks if the state is consistent and valid
+func (s *StateBackend) ValidateState(ctx context.Context, key string) error {
+	state, err := s.Read(ctx, key)
+	if err != nil {
+		return fmt.Errorf("failed to read state for validation: %w", err)
+	}
+
+	if state == nil {
+		return fmt.Errorf("state is nil")
+	}
+
+	if state.Version == 0 {
+		return fmt.Errorf("state version is invalid")
 	}
 
 	return nil

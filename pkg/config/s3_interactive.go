@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/BurntSushi/toml"
+	"github.com/javanhut/genesys/pkg/validation"
 )
 
 // S3StorageResource represents a storage resource configuration
 type S3StorageResource struct {
-	Name         string            `yaml:"name" toml:"name"`
-	Type         string            `yaml:"type" toml:"type"`
-	Versioning   bool              `yaml:"versioning" toml:"versioning"`
-	Encryption   bool              `yaml:"encryption" toml:"encryption"`
-	PublicAccess bool              `yaml:"public_access" toml:"public_access"`
-	Tags         map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name         string             `yaml:"name" toml:"name"`
+	Type         string             `yaml:"type" toml:"type"`
+	Versioning   bool               `yaml:"versioning" toml:"versioning"`
+	Encryption   bool               `yaml:"encryption" toml:"encryption"`
+	PublicAccess bool               `yaml:"public_access" toml:"public_access"`
+	Tags         map[string]string  `yaml:"tags,omitempty" toml:"tags,omitempty"`
 	Lifecycle    *S3LifecycleConfig `yaml:"lifecycle,omitempty" toml:"lifecycle,omitempty"`
 }
 
@@ -32,11 +32,11 @@ type S3LifecycleConfig struct {
 type S3BucketConfig struct {
 	Provider string `yaml:"provider" toml:"provider"`
 	Region   string `yaml:"region" toml:"region"`
-	
+
 	Resources struct {
 		Storage []S3StorageResource `yaml:"storage" toml:"storage"`
 	} `yaml:"resources" toml:"resources"`
-	
+
 	Policies struct {
 		RequireEncryption bool     `yaml:"require_encryption" toml:"require_encryption"`
 		NoPublicBuckets   bool     `yaml:"no_public_buckets" toml:"no_public_buckets"`
@@ -55,7 +55,7 @@ func NewInteractiveS3Config() (*InteractiveS3Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &InteractiveS3Config{
 		configDir: ic.configDir,
 	}, nil
@@ -106,31 +106,44 @@ func (isc *InteractiveS3Config) CreateBucketConfig() (*S3BucketConfig, string, e
 }
 
 func (isc *InteractiveS3Config) getBucketName() (string, error) {
-	var bucketName string
+	var rawName string
 	prompt := &survey.Input{
 		Message: "Bucket name:",
-		Help:    "S3 bucket names must be globally unique and DNS-compliant",
-	}
-	
-	validator := func(val interface{}) error {
-		str := val.(string)
-		if len(str) < 3 {
-			return fmt.Errorf("bucket name must be at least 3 characters")
-		}
-		if len(str) > 63 {
-			return fmt.Errorf("bucket name must be less than 64 characters")
-		}
-		if strings.Contains(str, " ") || strings.ContainsAny(str, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-			return fmt.Errorf("bucket name must be lowercase with no spaces")
-		}
-		return nil
+		Help:    "Enter any name - it will be automatically formatted for AWS S3 (globally unique)",
 	}
 
-	if err := survey.AskOne(prompt, &bucketName, survey.WithValidator(validator)); err != nil {
+	if err := survey.AskOne(prompt, &rawName, survey.WithValidator(survey.Required)); err != nil {
 		return "", err
 	}
 
-	return bucketName, nil
+	// Auto-format the name
+	formattedName, err := validation.ValidateAndFormatName("s3", rawName)
+	if err != nil {
+		return "", fmt.Errorf("invalid bucket name: %w", err)
+	}
+
+	// Show the user what will be used if it changed
+	if formattedName != rawName {
+		fmt.Printf("✓ Name formatted for AWS S3: %s → %s\n", rawName, formattedName)
+
+		// Confirm with user
+		confirm := true
+		confirmPrompt := &survey.Confirm{
+			Message: fmt.Sprintf("Use formatted name '%s'?", formattedName),
+			Default: true,
+			Help:    "AWS S3 requires globally unique, DNS-compliant bucket names",
+		}
+		if err := survey.AskOne(confirmPrompt, &confirm); err != nil {
+			return "", err
+		}
+
+		if !confirm {
+			fmt.Println("Please enter a different name...")
+			return isc.getBucketName() // Ask again
+		}
+	}
+
+	return formattedName, nil
 }
 
 func (isc *InteractiveS3Config) getRegion() (string, error) {
@@ -174,7 +187,7 @@ func (isc *InteractiveS3Config) getRegion() (string, error) {
 }
 
 func (isc *InteractiveS3Config) getBucketConfiguration(bucketName string) (S3StorageResource, error) {
-	
+
 	config := S3StorageResource{
 		Name: bucketName,
 		Type: "bucket",
@@ -255,7 +268,7 @@ func (isc *InteractiveS3Config) getBucketConfiguration(bucketName string) (S3Sto
 
 func (isc *InteractiveS3Config) getTags() (map[string]string, error) {
 	tags := make(map[string]string)
-	
+
 	// Add default tags
 	defaultTags := map[string]string{
 		"Environment": "development",
@@ -282,14 +295,14 @@ func (isc *InteractiveS3Config) getTags() (map[string]string, error) {
 	if addMore {
 		for {
 			var key, value string
-			
+
 			keyPrompt := &survey.Input{
 				Message: "Tag key (empty to stop):",
 			}
 			if err := survey.AskOne(keyPrompt, &key); err != nil {
 				return tags, err
 			}
-			
+
 			if key == "" {
 				break
 			}
@@ -309,7 +322,7 @@ func (isc *InteractiveS3Config) getTags() (map[string]string, error) {
 }
 
 func (isc *InteractiveS3Config) getLifecycleConfig() (*S3LifecycleConfig, error) {
-	
+
 	lifecycle := &S3LifecycleConfig{}
 
 	// Archive configuration
@@ -332,7 +345,7 @@ func (isc *InteractiveS3Config) getLifecycleConfig() (*S3LifecycleConfig, error)
 		if err := survey.AskOne(archiveDaysPrompt, &archiveDaysStr); err != nil {
 			return nil, err
 		}
-		
+
 		var archiveDays int
 		if _, err := fmt.Sscanf(archiveDaysStr, "%d", &archiveDays); err != nil {
 			archiveDays = 90
@@ -360,7 +373,7 @@ func (isc *InteractiveS3Config) getLifecycleConfig() (*S3LifecycleConfig, error)
 		if err := survey.AskOne(deleteDaysPrompt, &deleteDaysStr); err != nil {
 			return nil, err
 		}
-		
+
 		var deleteDays int
 		if _, err := fmt.Sscanf(deleteDaysStr, "%d", &deleteDays); err != nil {
 			deleteDays = 365

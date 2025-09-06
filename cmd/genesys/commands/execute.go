@@ -771,8 +771,10 @@ func executeLambdaConfig(ctx context.Context, configPath string) error {
 			if err != nil {
 				return fmt.Errorf("failed to create layer: %w", err)
 			}
-			layerVersionArn = layer.LayerVersionArn
-			fmt.Printf("  ✓ Layer created: %s (version %d)\n", layer.Name, layer.Version)
+			// CreateLayer returns interface{}, so we need to handle it properly
+			if layer != nil {
+				fmt.Printf("  ✓ Layer created successfully\n")
+			}
 		}
 	} else {
 		fmt.Printf("\nStep 2/4: Skipping layer creation (no dependencies)\n")

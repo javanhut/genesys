@@ -397,7 +397,7 @@ func (s *IAMService) ListRoleTags(ctx context.Context, roleName string) (map[str
 	for _, tag := range listResp.Result.Tags {
 		tags[tag.Key] = tag.Value
 	}
-	
+
 	return tags, nil
 }
 
@@ -482,4 +482,150 @@ func ExtractPolicyName(policyArn string) string {
 		return parts[len(parts)-1]
 	}
 	return policyArn
+}
+
+// CreateRoleWithPolicies creates an IAM role and attaches multiple policies with proper error handling
+func (s *IAMService) CreateRoleWithPolicies(ctx context.Context, config *RoleConfig, policies []string) (*Role, error) {
+	// 1. Create the role first
+	role, err := s.CreateRole(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create role: %w", err)
+	}
+
+	// 2. Attach all policies with error handling and rollback
+	var attachedPolicies []string
+	for _, policyArn := range policies {
+		if err := s.AttachPolicyWithRetry(ctx, role.Name, policyArn); err != nil {
+			// Rollback: detach already attached policies and delete role
+			s.rollbackRoleCreation(ctx, role.Name, attachedPolicies)
+			return nil, fmt.Errorf("failed to attach policy %s: %w", policyArn, err)
+		}
+		attachedPolicies = append(attachedPolicies, policyArn)
+	}
+
+	// 3. Wait for IAM propagation
+	if err := s.waitForRolePropagation(ctx, role.ARN); err != nil {
+		return nil, fmt.Errorf("role created but propagation failed: %w", err)
+	}
+
+	return role, nil
+}
+
+// AttachPolicyWithRetry attaches a policy with retry logic for eventual consistency
+func (s *IAMService) AttachPolicyWithRetry(ctx context.Context, roleName, policyArn string) error {
+	maxRetries := 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := s.AttachPolicy(ctx, roleName, policyArn)
+		if err == nil {
+			return nil
+		}
+
+		// If it's a temporary error, retry
+		if attempt < maxRetries-1 && (strings.Contains(err.Error(), "throttling") ||
+			strings.Contains(err.Error(), "temporarily unavailable")) {
+			waitTime := time.Duration(1<<uint(attempt)) * time.Second
+			time.Sleep(waitTime)
+			continue
+		}
+
+		return err
+	}
+
+	return fmt.Errorf("failed to attach policy after %d attempts", maxRetries)
+}
+
+// waitForRolePropagation waits for the role to be propagated across AWS regions
+func (s *IAMService) waitForRolePropagation(ctx context.Context, roleArn string) error {
+	// Extract role name from ARN
+	parts := strings.Split(roleArn, "/")
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid role ARN format: %s", roleArn)
+	}
+	roleName := parts[len(parts)-1]
+
+	maxAttempts := 15
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Try to get the role
+		_, err := s.GetRole(ctx, roleName)
+		if err == nil {
+			// Role is accessible, check if policies are attached
+			policies, err := s.ListAttachedPolicies(ctx, roleName)
+			if err == nil && len(policies) > 0 {
+				// At least some policies are attached, consider it ready
+				return nil
+			}
+		}
+
+		// Wait before retrying with exponential backoff (max 10 seconds)
+		waitTime := time.Duration(1<<uint(attempt)) * time.Second
+		if waitTime > 10*time.Second {
+			waitTime = 10 * time.Second
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(waitTime):
+			// Continue to next attempt
+		}
+	}
+
+	return fmt.Errorf("role propagation timeout after %d attempts", maxAttempts)
+}
+
+// rollbackRoleCreation cleans up after a failed role creation
+func (s *IAMService) rollbackRoleCreation(ctx context.Context, roleName string, attachedPolicies []string) {
+	// Best effort cleanup - don't fail on errors during rollback
+
+	// Detach any policies that were attached
+	for _, policyArn := range attachedPolicies {
+		s.DetachPolicy(ctx, roleName, policyArn)
+	}
+
+	// Delete the role
+	s.DeleteRole(ctx, roleName)
+}
+
+// GetRoleArn gets the ARN for a role by name
+func (s *IAMService) GetRoleArn(ctx context.Context, roleName string) (string, error) {
+	role, err := s.GetRole(ctx, roleName)
+	if err != nil {
+		return "", err
+	}
+	return role.ARN, nil
+}
+
+// ValidateRole checks if a role exists and has the expected policies
+func (s *IAMService) ValidateRole(ctx context.Context, roleName string, expectedPolicies []string) error {
+	// Check if role exists
+	_, err := s.GetRole(ctx, roleName)
+	if err != nil {
+		return fmt.Errorf("role validation failed: %w", err)
+	}
+
+	// Check attached policies
+	attachedPolicies, err := s.ListAttachedPolicies(ctx, roleName)
+	if err != nil {
+		return fmt.Errorf("failed to list attached policies: %w", err)
+	}
+
+	// Convert to map for easier lookup
+	attachedMap := make(map[string]bool)
+	for _, policy := range attachedPolicies {
+		attachedMap[policy.ARN] = true
+	}
+
+	// Check if all expected policies are attached
+	var missingPolicies []string
+	for _, expectedArn := range expectedPolicies {
+		if !attachedMap[expectedArn] {
+			missingPolicies = append(missingPolicies, expectedArn)
+		}
+	}
+
+	if len(missingPolicies) > 0 {
+		return fmt.Errorf("missing policies: %v", missingPolicies)
+	}
+
+	return nil
 }

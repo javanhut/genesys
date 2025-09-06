@@ -35,6 +35,8 @@ type ProviderCredentials struct {
 	Credentials   map[string]string `json:"credentials"`
 	UseLocal      bool              `json:"use_local"`
 	DefaultConfig bool              `json:"default_config"`
+	ExpiresAt     *time.Time        `json:"expires_at,omitempty"`
+	LastRefreshed time.Time         `json:"last_refreshed"`
 }
 
 // NewAWSClient creates a new AWS client for direct API calls
@@ -48,6 +50,17 @@ func NewAWSClient(region, service string) (*AWSClient, error) {
 	if accessKey == "" || secretKey == "" {
 		creds, err := loadAWSCredentialsFromConfig()
 		if err == nil && creds != nil {
+			// Check if credentials are expired and need refresh
+			if creds.ExpiresAt != nil && time.Now().After(*creds.ExpiresAt) {
+				// Try to refresh credentials
+				refreshedCreds, refreshErr := refreshAWSCredentials(creds)
+				if refreshErr == nil {
+					creds = refreshedCreds
+				} else {
+					fmt.Printf("Warning: Credentials expired and refresh failed: %v\n", refreshErr)
+				}
+			}
+
 			if creds.UseLocal {
 				// If using local credentials, still need to read from environment
 				// but we know they should exist
@@ -105,18 +118,194 @@ func loadAWSCredentialsFromConfig() (*ProviderCredentials, error) {
 	return &creds, nil
 }
 
+// refreshAWSCredentials attempts to refresh AWS credentials
+func refreshAWSCredentials(creds *ProviderCredentials) (*ProviderCredentials, error) {
+	// For now, just try to reload from the credentials file
+	// In the future, this could integrate with AWS STS for automatic token refresh
+
+	// Try to read from AWS credentials file if using local credentials
+	if creds.UseLocal {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		credFile := filepath.Join(homeDir, ".aws", "credentials")
+		if _, err := os.Stat(credFile); err == nil {
+			// Parse AWS credentials file
+			refreshedCreds, err := parseAWSCredentialsFile(credFile, creds.Region)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse AWS credentials file: %w", err)
+			}
+
+			// Update timestamps
+			refreshedCreds.LastRefreshed = time.Now()
+
+			// Save updated credentials
+			if err := saveAWSCredentialsToConfig(refreshedCreds); err != nil {
+				return nil, fmt.Errorf("failed to save refreshed credentials: %w", err)
+			}
+
+			return refreshedCreds, nil
+		}
+	}
+
+	return nil, fmt.Errorf("credential refresh not supported for this configuration")
+}
+
+// parseAWSCredentialsFile parses the AWS credentials file
+func parseAWSCredentialsFile(credFile, region string) (*ProviderCredentials, error) {
+	data, err := os.ReadFile(credFile)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	credentials := make(map[string]string)
+	var expiresAt *time.Time
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "aws_access_key_id":
+			credentials["access_key_id"] = value
+		case "aws_secret_access_key":
+			credentials["secret_access_key"] = value
+		case "aws_session_token", "aws_security_token":
+			credentials["session_token"] = value
+		case "x_security_token_expires":
+			if expTime, err := time.Parse(time.RFC3339, value); err == nil {
+				expiresAt = &expTime
+			}
+		}
+	}
+
+	return &ProviderCredentials{
+		Provider:      "aws",
+		Region:        region,
+		Credentials:   credentials,
+		UseLocal:      true,
+		DefaultConfig: true,
+		ExpiresAt:     expiresAt,
+		LastRefreshed: time.Now(),
+	}, nil
+}
+
+// saveAWSCredentialsToConfig saves credentials to the config file
+func saveAWSCredentialsToConfig(creds *ProviderCredentials) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configDir := filepath.Join(homeDir, ".genesys")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+
+	configFile := filepath.Join(configDir, "aws.json")
+	data, err := json.MarshalIndent(creds, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configFile, data, 0644)
+}
+
+// ValidateAWSCredentials validates AWS credentials by making a test API call
+func ValidateAWSCredentials(accessKey, secretKey, sessionToken, region string) error {
+	client := &AWSClient{
+		AccessKey:    accessKey,
+		SecretKey:    secretKey,
+		SessionToken: sessionToken,
+		Region:       region,
+		Service:      "sts",
+		HTTPClient:   &http.Client{Timeout: 10 * time.Second},
+	}
+
+	// Make a GetCallerIdentity call to validate credentials
+	params := map[string]string{
+		"Action":  "GetCallerIdentity",
+		"Version": "2011-06-15",
+	}
+
+	resp, err := client.Request("POST", "", params, nil)
+	if err != nil {
+		return fmt.Errorf("credential validation failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return fmt.Errorf("credential validation failed with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	return nil
+}
+
+// RefreshAndValidateCredentials refreshes and validates stored credentials
+func RefreshAndValidateCredentials() error {
+	creds, err := loadAWSCredentialsFromConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load credentials: %w", err)
+	}
+
+	if creds == nil {
+		return fmt.Errorf("no credentials found")
+	}
+
+	// Check if credentials need refresh
+	if creds.ExpiresAt != nil && time.Now().After(*creds.ExpiresAt) {
+		refreshedCreds, err := refreshAWSCredentials(creds)
+		if err != nil {
+			return fmt.Errorf("failed to refresh credentials: %w", err)
+		}
+		creds = refreshedCreds
+	}
+
+	// Validate credentials
+	var accessKey, secretKey, sessionToken string
+	if ak, ok := creds.Credentials["access_key_id"]; ok {
+		accessKey = ak
+	}
+	if sk, ok := creds.Credentials["secret_access_key"]; ok {
+		secretKey = sk
+	}
+	if st, ok := creds.Credentials["session_token"]; ok {
+		sessionToken = st
+	}
+
+	if accessKey == "" || secretKey == "" {
+		return fmt.Errorf("incomplete credentials")
+	}
+
+	return ValidateAWSCredentials(accessKey, secretKey, sessionToken, creds.Region)
+}
+
 // isGlobalService returns true if the AWS service is global and doesn't use regional endpoints
 func isGlobalService(service string) bool {
 	globalServices := map[string]bool{
-		"iam":              true,
-		"sts":              true,
-		"cloudfront":       true,
-		"waf":              true,
-		"route53":          true,
-		"route53resolver":  false, // Regional
-		"shield":           true,
-		"support":          true,
-		"trustedadvisor":   true,
+		"iam":             true,
+		"sts":             true,
+		"cloudfront":      true,
+		"waf":             true,
+		"route53":         true,
+		"route53resolver": false, // Regional
+		"shield":          true,
+		"support":         true,
+		"trustedadvisor":  true,
 	}
 	return globalServices[service]
 }
@@ -163,7 +352,7 @@ func (c *AWSClient) requestInternal(method, endpoint string, params map[string]s
 		for k, v := range params {
 			values.Add(k, v)
 		}
-		
+
 		// For IAM/STS POST requests, put parameters in the body, otherwise in query string
 		if (c.Service == "iam" || c.Service == "sts") && method == "POST" {
 			requestBody = []byte(values.Encode())

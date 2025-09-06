@@ -11,6 +11,7 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/BurntSushi/toml"
 	"github.com/javanhut/genesys/pkg/lambda"
+	"github.com/javanhut/genesys/pkg/validation"
 )
 
 // InteractiveLambdaConfig handles interactive Lambda function configuration
@@ -86,12 +87,14 @@ type LambdaLayer struct {
 
 // LambdaIAM represents IAM configuration for Lambda
 type LambdaIAM struct {
-	RoleName         string   `toml:"role_name"`
-	RoleArn          string   `toml:"role_arn,omitempty"`
-	RequiredPolicies []string `toml:"required_policies"`
-	AutoManage       bool     `toml:"auto_manage"`
-	AutoCleanup      bool     `toml:"auto_cleanup"`
-	ManagedBy        string   `toml:"managed_by,omitempty"`
+	RoleName         string            `toml:"role_name"`
+	RoleArn          string            `toml:"role_arn,omitempty"`
+	RequiredPolicies []string          `toml:"required_policies"`
+	CustomPolicies   []string          `toml:"custom_policies,omitempty"`
+	AutoManage       bool              `toml:"auto_manage"`
+	AutoCleanup      bool              `toml:"auto_cleanup"`
+	ManagedBy        string            `toml:"managed_by,omitempty"`
+	PolicyDetails    map[string]string `toml:"policy_details,omitempty"` // Policy ARN -> Description mapping
 }
 
 // CreateLambdaConfig creates Lambda configuration interactively
@@ -100,14 +103,10 @@ func (ilc *InteractiveLambdaConfig) CreateLambdaConfig() (*LambdaFunctionConfig,
 	fmt.Println("=============================")
 	fmt.Println()
 
-	// Function name
-	var functionName string
-	namePrompt := &survey.Input{
-		Message: "Function name:",
-		Help:    "Unique name for your Lambda function (e.g., my-api-handler)",
-	}
-	if err := survey.AskOne(namePrompt, &functionName, survey.WithValidator(survey.Required)); err != nil {
-		return nil, "", err
+	// Function name with auto-formatting
+	functionName, err := ilc.getFunctionName()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get function name: %w", err)
 	}
 
 	// Source path with file browser option
@@ -522,64 +521,167 @@ func (ilc *InteractiveLambdaConfig) configureIAMPermissions(functionName, source
 	fmt.Printf("\n🔐 IAM Permissions Configuration\n")
 	fmt.Printf("================================\n")
 
-	// Start with basic required permissions
-	requiredPolicies := []string{"Basic CloudWatch Logs access"}
-
-	// Ask about common AWS service permissions
+	// Enhanced service permissions with multiple policy options
 	servicePermissions := []struct {
 		name        string
 		description string
-		policy      string
+		policies    []struct {
+			arn         string
+			description string
+			level       string // "read", "write", "full"
+		}
 	}{
 		{
-			name:        "Lambda Deployment",
-			description: "Deploy Lambda functions and layers (for CI/CD)",
-			policy:      "Lambda deployment permissions",
+			name:        "CloudWatch Logs",
+			description: "Basic logging capabilities (recommended)",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+					description: "Basic CloudWatch Logs access",
+					level:       "basic",
+				},
+			},
 		},
 		{
 			name:        "DynamoDB",
-			description: "Read/write access to DynamoDB tables",
-			policy:      "DynamoDB read/write access",
+			description: "NoSQL database access",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonDynamoDBReadOnlyAccess",
+					description: "Read-only access to DynamoDB",
+					level:       "read",
+				},
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess",
+					description: "Full access to DynamoDB",
+					level:       "full",
+				},
+			},
 		},
 		{
 			name:        "S3",
-			description: "Read/write access to S3 buckets",
-			policy:      "S3 full access",
+			description: "Object storage access",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+					description: "Read-only access to S3",
+					level:       "read",
+				},
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+					description: "Full access to S3",
+					level:       "full",
+				},
+			},
 		},
 		{
 			name:        "SQS",
-			description: "Send/receive messages from SQS queues",
-			policy:      "SQS full access",
+			description: "Message queue access",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonSQSReadOnlyAccess",
+					description: "Read-only access to SQS",
+					level:       "read",
+				},
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonSQSFullAccess",
+					description: "Full access to SQS",
+					level:       "full",
+				},
+			},
 		},
 		{
 			name:        "SNS",
-			description: "Publish to SNS topics",
-			policy:      "SNS full access",
+			description: "Notification service access",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonSNSReadOnlyAccess",
+					description: "Read-only access to SNS",
+					level:       "read",
+				},
+				{
+					arn:         "arn:aws:iam::aws:policy/AmazonSNSFullAccess",
+					description: "Full access to SNS",
+					level:       "full",
+				},
+			},
 		},
 		{
 			name:        "Secrets Manager",
-			description: "Read secrets from AWS Secrets Manager",
-			policy:      "Secrets Manager read access",
+			description: "Secure secrets access",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/SecretsManagerReadWrite",
+					description: "Read/write access to Secrets Manager",
+					level:       "full",
+				},
+			},
 		},
 		{
 			name:        "VPC",
-			description: "Run function in a VPC",
-			policy:      "VPC access",
+			description: "Virtual Private Cloud access",
+			policies: []struct {
+				arn         string
+				description string
+				level       string
+			}{
+				{
+					arn:         "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+					description: "VPC access for Lambda functions",
+					level:       "full",
+				},
+			},
 		},
 	}
 
-	fmt.Println("\nYour function will need permissions to access AWS services.")
-	fmt.Println("Select the services your function will use:")
+	// Start with basic required permissions
+	var selectedPolicies []string
+	var policyDetails = make(map[string]string)
 
-	options := make([]string, len(servicePermissions))
-	for i, svc := range servicePermissions {
-		options[i] = fmt.Sprintf("%s - %s", svc.name, svc.description)
+	// Always include basic execution role
+	selectedPolicies = append(selectedPolicies, "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole")
+	policyDetails["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"] = "Basic CloudWatch Logs access"
+
+	fmt.Println("\nSelect additional AWS services your function will access:")
+	fmt.Println("(Basic CloudWatch Logs access is automatically included)")
+
+	// Create options for service selection
+	serviceOptions := make([]string, len(servicePermissions)-1) // -1 to exclude CloudWatch Logs (already included)
+	for i, svc := range servicePermissions[1:] {                // Skip CloudWatch Logs
+		serviceOptions[i] = fmt.Sprintf("%s - %s", svc.name, svc.description)
 	}
+
+	// Add option for no additional services
+	serviceOptions = append(serviceOptions, "None - Only basic logging")
 
 	multiSelectPrompt := &survey.MultiSelect{
 		Message: "Select AWS services:",
-		Options: options,
-		Help:    "Choose all services your Lambda function needs to access",
+		Options: serviceOptions,
+		Help:    "Choose all services your Lambda function needs to access. You can select multiple.",
 	}
 
 	var selectedOptions []string
@@ -587,45 +689,147 @@ func (ilc *InteractiveLambdaConfig) configureIAMPermissions(functionName, source
 		return nil, err
 	}
 
-	// Convert selections to policies
+	// Process selected services and choose permission levels
 	for _, selected := range selectedOptions {
-		for i, option := range options {
-			if selected == option {
-				requiredPolicies = append(requiredPolicies, servicePermissions[i].policy)
+		if selected == "None - Only basic logging" {
+			continue
+		}
+
+		// Find the corresponding service
+		for _, svc := range servicePermissions[1:] { // Skip CloudWatch Logs
+			expectedOption := fmt.Sprintf("%s - %s", svc.name, svc.description)
+			if selected == expectedOption {
+				// If service has multiple policy options, ask user to choose
+				if len(svc.policies) > 1 {
+					fmt.Printf("\nChoose permission level for %s:\n", svc.name)
+
+					policyOptions := make([]string, len(svc.policies))
+					for j, policy := range svc.policies {
+						policyOptions[j] = fmt.Sprintf("%s (%s)", policy.description, policy.level)
+					}
+
+					var selectedPolicy string
+					policyPrompt := &survey.Select{
+						Message: fmt.Sprintf("Permission level for %s:", svc.name),
+						Options: policyOptions,
+						Help:    "Choose the minimum permissions your function needs",
+					}
+
+					if err := survey.AskOne(policyPrompt, &selectedPolicy); err != nil {
+						return nil, err
+					}
+
+					// Find selected policy
+					for j, option := range policyOptions {
+						if selectedPolicy == option {
+							policy := svc.policies[j]
+							selectedPolicies = append(selectedPolicies, policy.arn)
+							policyDetails[policy.arn] = policy.description
+							break
+						}
+					}
+				} else {
+					// Only one policy option
+					policy := svc.policies[0]
+					selectedPolicies = append(selectedPolicies, policy.arn)
+					policyDetails[policy.arn] = policy.description
+				}
 				break
 			}
 		}
 	}
 
-	// Generate role name
-	roleName := fmt.Sprintf("genesys-lambda-%s", functionName)
+	// Ask about custom policies
+	addCustom := false
+	customPrompt := &survey.Confirm{
+		Message: "Add custom IAM policy ARNs?",
+		Default: false,
+		Help:    "Add your own custom IAM policies by ARN",
+	}
+	survey.AskOne(customPrompt, &addCustom)
+
+	var customPolicies []string
+	if addCustom {
+		for {
+			var customArn string
+			arnPrompt := &survey.Input{
+				Message: "Custom policy ARN (or press Enter to finish):",
+				Help:    "Enter a custom IAM policy ARN (e.g., arn:aws:iam::123456789012:policy/MyCustomPolicy)",
+			}
+			if err := survey.AskOne(arnPrompt, &customArn); err != nil {
+				return nil, err
+			}
+
+			if customArn == "" {
+				break
+			}
+
+			// Basic ARN validation
+			if !strings.HasPrefix(customArn, "arn:aws:iam::") {
+				fmt.Println("⚠️  Invalid ARN format. Please enter a valid IAM policy ARN.")
+				continue
+			}
+
+			customPolicies = append(customPolicies, customArn)
+			policyDetails[customArn] = "Custom policy"
+			fmt.Printf("✓ Added custom policy: %s\n", customArn)
+		}
+	}
+
+	// Generate role name with validation
+	defaultRoleName := fmt.Sprintf("genesys-lambda-%s", functionName)
+	formattedRoleName, err := validation.ValidateAndFormatName("iam-role", defaultRoleName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format role name: %w", err)
+	}
 
 	// Ask if they want to customize the role name
 	customizeRole := false
 	customizePrompt := &survey.Confirm{
-		Message: fmt.Sprintf("Use default role name '%s'?", roleName),
+		Message: fmt.Sprintf("Use default role name '%s'?", formattedRoleName),
 		Default: true,
 		Help:    "The IAM role will be created automatically if it doesn't exist",
 	}
 	survey.AskOne(customizePrompt, &customizeRole)
 
+	roleName := formattedRoleName
 	if !customizeRole {
+		var rawRoleName string
 		roleNamePrompt := &survey.Input{
 			Message: "Enter custom role name:",
-			Default: roleName,
+			Default: formattedRoleName,
+			Help:    "Name will be automatically formatted for AWS IAM compatibility",
 		}
-		survey.AskOne(roleNamePrompt, &roleName)
+		if err := survey.AskOne(roleNamePrompt, &rawRoleName); err != nil {
+			return nil, err
+		}
+
+		// Format the custom role name
+		formattedCustomName, err := validation.ValidateAndFormatName("iam-role", rawRoleName)
+		if err != nil {
+			return nil, fmt.Errorf("invalid role name: %w", err)
+		}
+
+		// Show formatting if changed
+		if formattedCustomName != rawRoleName {
+			fmt.Printf("✓ Role name formatted for AWS IAM: %s → %s\n", rawRoleName, formattedCustomName)
+		}
+
+		roleName = formattedCustomName
 	}
 
 	fmt.Printf("\n✓ IAM configuration complete\n")
 	fmt.Printf("  Role name: %s\n", roleName)
-	fmt.Printf("  Permissions: %d policies\n", len(requiredPolicies))
+	fmt.Printf("  AWS managed policies: %d\n", len(selectedPolicies))
+	fmt.Printf("  Custom policies: %d\n", len(customPolicies))
 
 	return &LambdaIAM{
 		RoleName:         roleName,
-		RequiredPolicies: requiredPolicies,
+		RequiredPolicies: selectedPolicies,
+		CustomPolicies:   customPolicies,
 		AutoManage:       true,
 		AutoCleanup:      true,
+		PolicyDetails:    policyDetails,
 	}, nil
 }
 
@@ -708,4 +912,46 @@ func selectDirectory(startDir string) (string, error) {
 		// Otherwise navigate to selected directory
 		currentDir = selectedPath
 	}
+}
+
+// getFunctionName gets and validates the Lambda function name
+func (ilc *InteractiveLambdaConfig) getFunctionName() (string, error) {
+	var rawName string
+	prompt := &survey.Input{
+		Message: "Function name:",
+		Help:    "Enter any name - it will be automatically formatted for AWS Lambda",
+	}
+
+	if err := survey.AskOne(prompt, &rawName, survey.WithValidator(survey.Required)); err != nil {
+		return "", err
+	}
+
+	// Auto-format the name
+	formattedName, err := validation.ValidateAndFormatName("lambda", rawName)
+	if err != nil {
+		return "", fmt.Errorf("invalid function name: %w", err)
+	}
+
+	// Show the user what will be used if it changed
+	if formattedName != rawName {
+		fmt.Printf("✓ Name formatted for AWS Lambda: %s → %s\n", rawName, formattedName)
+
+		// Confirm with user
+		confirm := true
+		confirmPrompt := &survey.Confirm{
+			Message: fmt.Sprintf("Use formatted name '%s'?", formattedName),
+			Default: true,
+			Help:    "AWS Lambda requires specific naming rules",
+		}
+		if err := survey.AskOne(confirmPrompt, &confirm); err != nil {
+			return "", err
+		}
+
+		if !confirm {
+			fmt.Println("Please enter a different name...")
+			return ilc.getFunctionName() // Ask again
+		}
+	}
+
+	return formattedName, nil
 }

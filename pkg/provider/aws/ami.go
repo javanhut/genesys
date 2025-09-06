@@ -107,7 +107,7 @@ func (r *AMIResolver) ResolveAMI(ctx context.Context, image string) (string, err
 		}
 	default: // "auto" or any other value
 		// Try all strategies in order
-		
+
 		// Strategy 1: Try AWS Systems Manager Parameter Store
 		if amiID, err := r.lookupFromSSM(ctx, image); err == nil && amiID != "" {
 			r.cacheAMI(cacheKey, amiID, "ssm")
@@ -136,10 +136,10 @@ func (r *AMIResolver) ResolveAMI(ctx context.Context, image string) (string, err
 func (r *AMIResolver) lookupFromSSM(ctx context.Context, image string) (string, error) {
 	// AWS publishes current AMI IDs in SSM Parameter Store
 	parameterMap := map[string]string{
-		"ubuntu-lts":     "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id",
-		"ubuntu":         "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id",
-		"amazon-linux":   "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64",
-		"amzn2":          "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2",
+		"ubuntu-lts":        "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id",
+		"ubuntu":            "/aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id",
+		"amazon-linux":      "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64",
+		"amzn2":             "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2",
 		"amazon-linux-2023": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64",
 	}
 
@@ -349,6 +349,15 @@ func (r *AMIResolver) cacheAMI(key, amiID, source string) {
 // ClearCache clears the AMI cache (useful for testing or forced refresh)
 func (r *AMIResolver) ClearCache() {
 	r.cache = make(map[string]*AMICacheEntry)
+}
+
+// RefreshCache clears expired entries from the cache
+func (r *AMIResolver) RefreshCache() {
+	for key, entry := range r.cache {
+		if time.Since(entry.Timestamp) > r.cacheTTL {
+			delete(r.cache, key)
+		}
+	}
 }
 
 // GetCacheStats returns cache statistics for debugging

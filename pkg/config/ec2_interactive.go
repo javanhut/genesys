@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/javanhut/genesys/pkg/provider/aws"
 	"github.com/javanhut/genesys/pkg/state"
+	"github.com/javanhut/genesys/pkg/validation"
 )
 
 // EC2ComputeResource represents a compute resource configuration
@@ -41,26 +42,26 @@ type EC2StorageConfig struct {
 type EC2InstanceConfig struct {
 	Provider string `yaml:"provider" toml:"provider"`
 	Region   string `yaml:"region" toml:"region"`
-	
+
 	Resources struct {
 		Compute []EC2ComputeResource `yaml:"compute" toml:"compute"`
 	} `yaml:"resources" toml:"resources"`
-	
+
 	Policies struct {
 		RequireEncryption bool     `yaml:"require_encryption" toml:"require_encryption"`
 		NoPublicInstances bool     `yaml:"no_public_instances" toml:"no_public_instances"`
 		RequireTags       []string `yaml:"require_tags,omitempty" toml:"require_tags,omitempty"`
 	} `yaml:"policies" toml:"policies"`
-	
+
 	AMILookup *EC2AMILookupConfig `yaml:"ami_lookup,omitempty" toml:"ami_lookup,omitempty"`
 }
 
 // EC2AMILookupConfig controls AMI resolution behavior
 type EC2AMILookupConfig struct {
-	Strategy       string `yaml:"strategy,omitempty" toml:"strategy,omitempty"`             // "auto", "ssm", "describe", "static"
-	DisableCache   bool   `yaml:"disable_cache,omitempty" toml:"disable_cache,omitempty"`   // Disable AMI caching
-	CacheTTLHours  int    `yaml:"cache_ttl_hours,omitempty" toml:"cache_ttl_hours,omitempty"` // Cache TTL in hours (default 24)
-	FallbackToStatic bool `yaml:"fallback_to_static,omitempty" toml:"fallback_to_static,omitempty"` // Allow fallback to static mappings
+	Strategy         string `yaml:"strategy,omitempty" toml:"strategy,omitempty"`                     // "auto", "ssm", "describe", "static"
+	DisableCache     bool   `yaml:"disable_cache,omitempty" toml:"disable_cache,omitempty"`           // Disable AMI caching
+	CacheTTLHours    int    `yaml:"cache_ttl_hours,omitempty" toml:"cache_ttl_hours,omitempty"`       // Cache TTL in hours (default 24)
+	FallbackToStatic bool   `yaml:"fallback_to_static,omitempty" toml:"fallback_to_static,omitempty"` // Allow fallback to static mappings
 }
 
 // InteractiveEC2Config manages interactive EC2 instance configuration
@@ -74,7 +75,7 @@ func NewInteractiveEC2Config() (*InteractiveEC2Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &InteractiveEC2Config{
 		configDir: ic.configDir,
 	}, nil
@@ -125,35 +126,52 @@ func (iec *InteractiveEC2Config) CreateInstanceConfig() (*EC2InstanceConfig, str
 }
 
 func (iec *InteractiveEC2Config) getInstanceName() (string, error) {
-	var instanceName string
+	var rawName string
 	prompt := &survey.Input{
 		Message: "Instance name:",
-		Help:    "A friendly name for your EC2 instance (must be unique)",
+		Help:    "Enter any name - it will be automatically formatted for AWS EC2",
 		Default: "my-ec2-instance",
 	}
-	
-	validator := func(val interface{}) error {
-		str := val.(string)
-		if len(str) < 1 {
-			return fmt.Errorf("instance name cannot be empty")
-		}
-		if len(str) > 255 {
-			return fmt.Errorf("instance name must be less than 256 characters")
-		}
-		
-		// Check for existing instances with the same name
-		if err := iec.validateUniqueName(str); err != nil {
-			return err
-		}
-		
-		return nil
-	}
 
-	if err := survey.AskOne(prompt, &instanceName, survey.WithValidator(validator)); err != nil {
+	if err := survey.AskOne(prompt, &rawName, survey.WithValidator(survey.Required)); err != nil {
 		return "", err
 	}
 
-	return instanceName, nil
+	// Auto-format the name
+	formattedName, err := validation.ValidateAndFormatName("ec2", rawName)
+	if err != nil {
+		return "", fmt.Errorf("invalid instance name: %w", err)
+	}
+
+	// Show the user what will be used if it changed
+	if formattedName != rawName {
+		fmt.Printf("✓ Name formatted for AWS EC2: %s → %s\n", rawName, formattedName)
+
+		// Confirm with user
+		confirm := true
+		confirmPrompt := &survey.Confirm{
+			Message: fmt.Sprintf("Use formatted name '%s'?", formattedName),
+			Default: true,
+			Help:    "AWS EC2 requires specific naming rules",
+		}
+		if err := survey.AskOne(confirmPrompt, &confirm); err != nil {
+			return "", err
+		}
+
+		if !confirm {
+			fmt.Println("Please enter a different name...")
+			return iec.getInstanceName() // Ask again
+		}
+	}
+
+	// Check for existing instances with the same name
+	if err := iec.validateUniqueName(formattedName); err != nil {
+		fmt.Printf("⚠️  %v\n", err)
+		fmt.Println("Please choose a different name...")
+		return iec.getInstanceName() // Ask again
+	}
+
+	return formattedName, nil
 }
 
 func (iec *InteractiveEC2Config) getRegion() (string, error) {
@@ -204,12 +222,12 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 
 	// Instance type
 	instanceTypes := []string{
-		"t3.micro (t3.micro - 2 vCPU, 1GB RAM) ~ FREE TIER - $0/month for first year", 
+		"t3.micro (t3.micro - 2 vCPU, 1GB RAM) ~ FREE TIER - $0/month for first year",
 		"small (t3.small - 2 vCPU, 2GB RAM) ~ FREE TIER - $0/month for first year",
 		"c7i-flex.large (c7i-flex.large - 2 vCPU, 4GB RAM) ~ FREE TIER - $0/month for first year",
 		"m7i-flex.large (m7i-flex.large - 2 vCPU, 8GB RAM) ~ FREE TIER - $0/month for first year",
 		"t2.micro (t2.micro - 1 vCPU, 1GB RAM) ~ $8/month",
-		"medium (t3.medium - 2 vCPU, 4GB RAM) ~ $30/month",  
+		"medium (t3.medium - 2 vCPU, 4GB RAM) ~ $30/month",
 		"large (t3.large - 2 vCPU, 8GB RAM) ~ $60/month",
 		"xlarge (t3.xlarge - 4 vCPU, 16GB RAM) ~ $120/month",
 	}
@@ -224,7 +242,7 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 	if err := survey.AskOne(typePrompt, &selectedType); err != nil {
 		return config, err
 	}
-	
+
 	// Extract the actual type from the selection
 	config.Type = strings.Split(strings.Split(selectedType, "(")[1], " ")[0]
 
@@ -232,7 +250,7 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 	if strings.Contains(config.Type, "xlarge") {
 		fmt.Printf("\nHIGH COST WARNING: %s instances cost ~$120+/month\n", config.Type)
 		fmt.Printf("Consider using a smaller instance type for development/testing.\n")
-		
+
 		var proceedWithExpensive bool
 		expensivePrompt := &survey.Confirm{
 			Message: fmt.Sprintf("Continue with %s instance type?", config.Type),
@@ -454,7 +472,7 @@ func (iec *InteractiveEC2Config) getStorageConfig() (*EC2StorageConfig, error) {
 	if err := survey.AskOne(sizePrompt, &sizeStr); err != nil {
 		return nil, err
 	}
-	
+
 	if _, err := fmt.Sscanf(sizeStr, "%d", &storage.Size); err != nil {
 		storage.Size = 20 // Default
 	}
@@ -485,7 +503,7 @@ func (iec *InteractiveEC2Config) getStorageConfig() (*EC2StorageConfig, error) {
 	if err := survey.AskOne(volumeTypePrompt, &selectedVolumeType); err != nil {
 		return nil, err
 	}
-	
+
 	storage.VolumeType = strings.Split(selectedVolumeType, " ")[0]
 
 	// Encryption
@@ -513,7 +531,7 @@ func (iec *InteractiveEC2Config) getStorageConfig() (*EC2StorageConfig, error) {
 
 func (iec *InteractiveEC2Config) getTags() (map[string]string, error) {
 	tags := make(map[string]string)
-	
+
 	// Add default tags
 	defaultTags := map[string]string{
 		"Environment": "development",
@@ -540,14 +558,14 @@ func (iec *InteractiveEC2Config) getTags() (map[string]string, error) {
 	if addMore {
 		for {
 			var key, value string
-			
+
 			keyPrompt := &survey.Input{
 				Message: "Tag key (empty to stop):",
 			}
 			if err := survey.AskOne(keyPrompt, &key); err != nil {
 				return tags, err
 			}
-			
+
 			if key == "" {
 				break
 			}
@@ -572,21 +590,21 @@ func (iec *InteractiveEC2Config) validateUniqueName(name string) error {
 	if name == "" {
 		return fmt.Errorf("instance name cannot be empty")
 	}
-	
+
 	if strings.Contains(name, " ") {
 		return fmt.Errorf("instance name cannot contain spaces")
 	}
-	
+
 	// Check local state first (fastest check)
 	if err := iec.checkLocalState(name); err != nil {
 		return err
 	}
-	
+
 	// Check AWS for existing instances with the same Name tag
 	if err := iec.checkAWSInstances(name); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -597,14 +615,14 @@ func (iec *InteractiveEC2Config) checkLocalState(name string) error {
 		// If we can't load local state, continue with AWS check
 		return nil
 	}
-	
+
 	// Check if any existing resource has this name
 	for _, resource := range localState.Resources {
 		if resource.Type == "ec2" && resource.Name == name {
 			return fmt.Errorf("instance name '%s' already exists (created %s)", name, resource.CreatedAt.Format("2006-01-02 15:04"))
 		}
 	}
-	
+
 	return nil
 }
 
@@ -616,37 +634,37 @@ func (iec *InteractiveEC2Config) checkAWSInstances(name string) error {
 		// If we can't determine region, allow the name but don't block
 		return nil
 	}
-	
+
 	// Create AWS provider to check existing instances
 	provider, err := aws.NewAWSProvider(region)
 	if err != nil {
 		// If we can't connect to AWS, allow the name but warn
 		return nil
 	}
-	
+
 	computeService := provider.Compute()
-	
+
 	// Search for instances with this Name tag
 	ctx := context.Background()
 	instances, err := computeService.ListInstances(ctx, map[string]string{
-		"tag:Name": name,
+		"tag:Name":            name,
 		"instance-state-name": "running,stopped,stopping,pending",
 	})
-	
+
 	if err != nil {
 		// If we can't query AWS, allow the name but don't block
 		return nil
 	}
-	
+
 	if len(instances) > 0 {
 		states := make([]string, len(instances))
 		for i, instance := range instances {
 			states[i] = instance.State
 		}
-		return fmt.Errorf("instance name '%s' already exists in AWS (%d instance(s): %s)", 
+		return fmt.Errorf("instance name '%s' already exists in AWS (%d instance(s): %s)",
 			name, len(instances), strings.Join(states, ", "))
 	}
-	
+
 	return nil
 }
 

@@ -41,6 +41,8 @@ Get started:
 	rootCmd.AddCommand(commands.NewInteractCommand())
 	rootCmd.AddCommand(commands.NewDiscoverCommand())
 	rootCmd.AddCommand(commands.NewConfigCommand())
+	rootCmd.AddCommand(commands.NewCacheCommand())
+	rootCmd.AddCommand(commands.NewStateCommand())
 	rootCmd.AddCommand(commands.NewVersionCommand(version, commit))
 
 	if err := rootCmd.Execute(); err != nil {

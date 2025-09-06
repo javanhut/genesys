@@ -2,23 +2,32 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 )
 
+// ConfigManager handles configuration loading and reloading
+type ConfigManager struct {
+	configPath   string
+	lastModified time.Time
+	cachedConfig *Config
+}
+
 // Config represents the main configuration structure
 type Config struct {
-	Provider  string                 `yaml:"provider" toml:"provider"`
-	Region    string                 `yaml:"region" toml:"region"`
-	Project   string                 `yaml:"project,omitempty" toml:"project,omitempty"` // For GCP
-	Outcomes  map[string]Outcome     `yaml:"outcomes,omitempty" toml:"outcomes,omitempty"`
-	Resources Resources              `yaml:"resources,omitempty" toml:"resources,omitempty"`
-	State     StateConfig            `yaml:"state,omitempty" toml:"state,omitempty"`
-	Policies  Policies               `yaml:"policies,omitempty" toml:"policies,omitempty"`
+	Provider  string             `yaml:"provider" toml:"provider"`
+	Region    string             `yaml:"region" toml:"region"`
+	Project   string             `yaml:"project,omitempty" toml:"project,omitempty"` // For GCP
+	Outcomes  map[string]Outcome `yaml:"outcomes,omitempty" toml:"outcomes,omitempty"`
+	Resources Resources          `yaml:"resources,omitempty" toml:"resources,omitempty"`
+	State     StateConfig        `yaml:"state,omitempty" toml:"state,omitempty"`
+	Policies  Policies           `yaml:"policies,omitempty" toml:"policies,omitempty"`
 }
 
 // Outcome represents a high-level deployment outcome
@@ -95,14 +104,14 @@ type SubnetConfig struct {
 
 // DatabaseResource represents database configuration
 type DatabaseResource struct {
-	Name      string            `yaml:"name" toml:"name"`
-	Engine    string            `yaml:"engine" toml:"engine"`
-	Version   string            `yaml:"version" toml:"version"`
-	Size      string            `yaml:"size" toml:"size"` // small|medium|large
-	Storage   int               `yaml:"storage" toml:"storage"` // GB
-	MultiAZ   bool              `yaml:"multi_az,omitempty" toml:"multi_az,omitempty"`
-	Backup    *BackupConfig     `yaml:"backup,omitempty" toml:"backup,omitempty"`
-	Tags      map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name    string            `yaml:"name" toml:"name"`
+	Engine  string            `yaml:"engine" toml:"engine"`
+	Version string            `yaml:"version" toml:"version"`
+	Size    string            `yaml:"size" toml:"size"`       // small|medium|large
+	Storage int               `yaml:"storage" toml:"storage"` // GB
+	MultiAZ bool              `yaml:"multi_az,omitempty" toml:"multi_az,omitempty"`
+	Backup  *BackupConfig     `yaml:"backup,omitempty" toml:"backup,omitempty"`
+	Tags    map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
 }
 
 // BackupConfig for database backups
@@ -125,10 +134,10 @@ type ServerlessResource struct {
 
 // TriggerConfig for serverless triggers
 type TriggerConfig struct {
-	Type    string   `yaml:"type" toml:"type"` // http|schedule|queue|storage
-	Path    string   `yaml:"path,omitempty" toml:"path,omitempty"`
-	Methods []string `yaml:"methods,omitempty" toml:"methods,omitempty"`
-	Schedule string  `yaml:"schedule,omitempty" toml:"schedule,omitempty"`
+	Type     string   `yaml:"type" toml:"type"` // http|schedule|queue|storage
+	Path     string   `yaml:"path,omitempty" toml:"path,omitempty"`
+	Methods  []string `yaml:"methods,omitempty" toml:"methods,omitempty"`
+	Schedule string   `yaml:"schedule,omitempty" toml:"schedule,omitempty"`
 }
 
 // StateConfig for state management
@@ -188,7 +197,6 @@ func LoadConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
-
 // SaveConfig saves configuration to a file
 func SaveConfig(config *Config, path string) error {
 	var data []byte
@@ -211,4 +219,84 @@ func SaveConfig(config *Config, path string) error {
 	}
 
 	return os.WriteFile(path, data, 0644)
+}
+
+// NewConfigManager creates a new configuration manager
+func NewConfigManager(configPath string) *ConfigManager {
+	return &ConfigManager{
+		configPath: configPath,
+	}
+}
+
+// LoadConfig loads configuration with caching and change detection
+func (cm *ConfigManager) LoadConfig() (*Config, error) {
+	stat, err := os.Stat(cm.configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat config file: %w", err)
+	}
+
+	// Check if we need to reload
+	if cm.cachedConfig != nil && stat.ModTime().Equal(cm.lastModified) {
+		return cm.cachedConfig, nil
+	}
+
+	// Load fresh configuration
+	config, err := LoadConfig(cm.configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the configuration
+	cm.cachedConfig = config
+	cm.lastModified = stat.ModTime()
+
+	return config, nil
+}
+
+// ReloadConfig forces a reload of the configuration
+func (cm *ConfigManager) ReloadConfig() (*Config, error) {
+	cm.cachedConfig = nil
+	cm.lastModified = time.Time{}
+	return cm.LoadConfig()
+}
+
+// IsConfigChanged checks if the configuration file has been modified
+func (cm *ConfigManager) IsConfigChanged() (bool, error) {
+	stat, err := os.Stat(cm.configPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to stat config file: %w", err)
+	}
+
+	return !stat.ModTime().Equal(cm.lastModified), nil
+}
+
+// RefreshProviderCredentials reloads provider credentials from config files
+func RefreshProviderCredentials() error {
+	// Refresh AWS credentials
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	awsConfigFile := filepath.Join(homeDir, ".genesys", "aws.json")
+	if _, err := os.Stat(awsConfigFile); err == nil {
+		// AWS config exists, try to refresh credentials
+		data, err := os.ReadFile(awsConfigFile)
+		if err != nil {
+			return fmt.Errorf("failed to read AWS config: %w", err)
+		}
+
+		var creds struct {
+			UseLocal bool `json:"use_local"`
+		}
+		if err := json.Unmarshal(data, &creds); err == nil && creds.UseLocal {
+			// Try to refresh from AWS credentials file
+			credFile := filepath.Join(homeDir, ".aws", "credentials")
+			if _, err := os.Stat(credFile); err == nil {
+				// TODO: Implement credential refresh logic
+			}
+		}
+	}
+
+	return nil
 }
