@@ -59,7 +59,8 @@ func (b *PodmanBuilder) BuildLayer() error {
 	case strings.HasPrefix(b.runtime.Name, "nodejs"):
 		err = b.buildNodeLayer(layerDir)
 	case strings.HasPrefix(b.runtime.Name, "go"), strings.HasPrefix(b.runtime.Name, "provided.al2"):
-		err = b.buildGoLayer(layerDir)
+		// Go doesn't need layers - dependencies are compiled into the binary
+		return nil
 	case strings.HasPrefix(b.runtime.Name, "java"):
 		err = b.buildJavaLayer(layerDir)
 	default:
@@ -252,17 +253,46 @@ func (b *PodmanBuilder) buildGoFunction(buildDir string) error {
 		goarch = "arm64"
 	}
 
-	// Build Go binary
+	// Install Go and build the binary
+	// Use a multi-command script to install Go and then build
+	var installGoCmd string
+	
+	// Determine package manager based on runtime version
+	packageManager := "yum"
+	if strings.Contains(b.runtime.Version, "al2023") {
+		packageManager = "dnf"
+	}
+	
+	if b.runtime.Architecture == "arm64" {
+		installGoCmd = fmt.Sprintf(`
+		%s update -y && 
+		%s install -y wget tar gzip gcc git && 
+		wget -q https://go.dev/dl/go1.21.5.linux-arm64.tar.gz && 
+		tar -C /usr/local -xzf go1.21.5.linux-arm64.tar.gz && 
+		export PATH=$PATH:/usr/local/go/bin && 
+		cd /src && 
+		go build -o /build/bootstrap lambda_main.go`, packageManager, packageManager)
+	} else {
+		installGoCmd = fmt.Sprintf(`
+		%s update -y && 
+		%s install -y wget tar gzip gcc git && 
+		wget -q https://go.dev/dl/go1.21.5.linux-amd64.tar.gz && 
+		tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz && 
+		export PATH=$PATH:/usr/local/go/bin && 
+		cd /src && 
+		go build -o /build/bootstrap lambda_main.go`, packageManager, packageManager)
+	}
+
+	// Build Go binary with Go installation
 	cmd := exec.Command("podman", "run", "--rm",
 		"--entrypoint", "/bin/sh",
 		"-v", fmt.Sprintf("%s:/src:ro", b.sourcePath),
 		"-v", fmt.Sprintf("%s:/build", buildDir),
-		"-w", "/src",
 		"-e", "GOOS=linux",
 		"-e", fmt.Sprintf("GOARCH=%s", goarch),
 		"-e", "CGO_ENABLED=0",
 		b.runtime.BuildImage,
-		"-c", "go build -o /build/bootstrap .",
+		"-c", installGoCmd,
 	)
 
 	return b.runCommand(cmd)

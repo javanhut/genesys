@@ -5,6 +5,7 @@ go 1.24.6
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/BurntSushi/toml v1.5.0
+	github.com/aws/aws-lambda-go v1.41.0
 	github.com/spf13/cobra v1.9.1
 	gopkg.in/yaml.v3 v3.0.1
 )
