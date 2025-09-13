@@ -31,13 +31,13 @@ func NewInteractiveLambdaConfig() (*InteractiveLambdaConfig, error) {
 
 // LambdaFunctionConfig represents Lambda function configuration for TOML
 type LambdaFunctionConfig struct {
-	Metadata   LambdaMetadata   `toml:"metadata"`
-	Build      LambdaBuild      `toml:"build"`
-	Function   LambdaFunction   `toml:"function"`
-	Deployment LambdaDeployment `toml:"deployment"`
-	Triggers   []LambdaTrigger  `toml:"triggers,omitempty"`
-	Layer      *LambdaLayer     `toml:"layer,omitempty"`
-	IAM        *LambdaIAM       `toml:"iam,omitempty"`
+	Metadata   LambdaMetadata    `toml:"metadata"`
+	Build      LambdaBuild       `toml:"build"`
+	Function   LambdaFunction    `toml:"function"`
+	Deployment LambdaDeployment  `toml:"deployment"`
+	Triggers   []LambdaTrigger   `toml:"triggers,omitempty"`
+	Layer      *LambdaLayer      `toml:"layer,omitempty"`
+	IAM        *UnifiedIAMConfig `toml:"iam,omitempty"`
 }
 
 // LambdaMetadata contains function metadata
@@ -85,17 +85,6 @@ type LambdaLayer struct {
 	CompatibleRuntimes []string `toml:"compatible_runtimes"`
 }
 
-// LambdaIAM represents IAM configuration for Lambda
-type LambdaIAM struct {
-	RoleName         string            `toml:"role_name"`
-	RoleArn          string            `toml:"role_arn,omitempty"`
-	RequiredPolicies []string          `toml:"required_policies"`
-	CustomPolicies   []string          `toml:"custom_policies,omitempty"`
-	AutoManage       bool              `toml:"auto_manage"`
-	AutoCleanup      bool              `toml:"auto_cleanup"`
-	ManagedBy        string            `toml:"managed_by,omitempty"`
-	PolicyDetails    map[string]string `toml:"policy_details,omitempty"` // Policy ARN -> Description mapping
-}
 
 // CreateLambdaConfig creates Lambda configuration interactively
 func (ilc *InteractiveLambdaConfig) CreateLambdaConfig() (*LambdaFunctionConfig, string, error) {
@@ -167,7 +156,7 @@ func (ilc *InteractiveLambdaConfig) CreateLambdaConfig() (*LambdaFunctionConfig,
 
 	// Step 1: ALWAYS Select Architecture FIRST
 	// This must happen before ANY runtime selection to avoid confusion
-	fmt.Println("\n🏗️  Step 1: Select Architecture")
+	fmt.Println("\nStep 1: Select Architecture")
 	fmt.Println("Choose the processor architecture for your Lambda function:")
 	fmt.Println("• x86_64: Standard architecture, widely compatible")
 	fmt.Println("• arm64: AWS Graviton2, up to 34% cost savings")
@@ -517,7 +506,7 @@ func ValidateLambdaConfig(config *LambdaFunctionConfig) error {
 }
 
 // configureIAMPermissions collects IAM requirements during interactive config
-func (ilc *InteractiveLambdaConfig) configureIAMPermissions(functionName, sourcePath string) (*LambdaIAM, error) {
+func (ilc *InteractiveLambdaConfig) configureIAMPermissions(functionName, sourcePath string) (*UnifiedIAMConfig, error) {
 	fmt.Printf("\n🔐 IAM Permissions Configuration\n")
 	fmt.Printf("================================\n")
 
@@ -766,7 +755,7 @@ func (ilc *InteractiveLambdaConfig) configureIAMPermissions(functionName, source
 
 			// Basic ARN validation
 			if !strings.HasPrefix(customArn, "arn:aws:iam::") {
-				fmt.Println("⚠️  Invalid ARN format. Please enter a valid IAM policy ARN.")
+				fmt.Println("Warning: Invalid ARN format. Please enter a valid IAM policy ARN.")
 				continue
 			}
 
@@ -823,13 +812,17 @@ func (ilc *InteractiveLambdaConfig) configureIAMPermissions(functionName, source
 	fmt.Printf("  AWS managed policies: %d\n", len(selectedPolicies))
 	fmt.Printf("  Custom policies: %d\n", len(customPolicies))
 
-	return &LambdaIAM{
+	// Combine selected AWS managed policies with custom policies in RequiredPolicies
+	allPolicies := selectedPolicies
+	allPolicies = append(allPolicies, customPolicies...)
+
+	return &UnifiedIAMConfig{
 		RoleName:         roleName,
-		RequiredPolicies: selectedPolicies,
-		CustomPolicies:   customPolicies,
+		RequiredPolicies: allPolicies,
 		AutoManage:       true,
 		AutoCleanup:      true,
-		PolicyDetails:    policyDetails,
+		TrustPolicy:      "lambda",
+		Description:      fmt.Sprintf("Auto-created by Genesys for Lambda function: %s", functionName),
 	}, nil
 }
 
@@ -858,7 +851,7 @@ func selectDirectory(startDir string) (string, error) {
 		}
 
 		// Add current directory option
-		options = append(options, fmt.Sprintf("✅ . (select current: %s)", filepath.Base(currentDir)))
+		options = append(options, fmt.Sprintf(". (select current: %s)", filepath.Base(currentDir)))
 		paths = append(paths, currentDir)
 
 		// Add subdirectories
@@ -876,7 +869,7 @@ func selectDirectory(startDir string) (string, error) {
 		}
 
 		if len(options) == 0 {
-			options = append(options, fmt.Sprintf("✅ . (select current: %s)", filepath.Base(currentDir)))
+			options = append(options, fmt.Sprintf(". (select current: %s)", filepath.Base(currentDir)))
 			paths = append(paths, currentDir)
 		}
 
@@ -905,7 +898,7 @@ func selectDirectory(startDir string) (string, error) {
 		selectedPath := paths[selectedIndex]
 
 		// If user selected current directory, return it
-		if selectedPath == currentDir && strings.HasPrefix(selectedOption, "✅") {
+		if selectedPath == currentDir && strings.Contains(selectedOption, "(select current:") {
 			return selectedPath, nil
 		}
 

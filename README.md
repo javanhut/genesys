@@ -21,21 +21,46 @@ Genesys is a simplicity-first Infrastructure as Code tool that focuses on outcom
 
 ### Step 1: Installation
 
+#### Option 1: Local Installation (Recommended)
 ```bash
-# Clone and build
+# Clone, build, and install to user directory
 git clone https://github.com/javanhut/genesys.git
 cd genesys
-go build -o genesys ./cmd/genesys
+make install-local
 
 # Verify installation
-./genesys version
+genesys version
 ```
+
+#### Option 2: System-wide Installation
+```bash
+# Clone, build, and install system-wide
+git clone https://github.com/javanhut/genesys.git
+cd genesys
+sudo make install
+
+# Verify installation
+genesys version
+```
+
+#### Option 3: Development Build
+```bash
+# Clone and build for development
+git clone https://github.com/javanhut/genesys.git
+cd genesys
+make build
+
+# Run from current directory
+genesys version
+```
+
+For installation help, run `make help`.
 
 ### Step 2: Configure Your First Provider
 
 ```bash
 # Start interactive setup
-./genesys config setup
+genesys config setup
 ```
 
 Follow the prompts to configure AWS (or your preferred provider):
@@ -47,7 +72,7 @@ Follow the prompts to configure AWS (or your preferred provider):
 
 ```bash
 # Start interactive mode
-./genesys interact
+genesys interact
 ```
 
 Follow this workflow:
@@ -66,10 +91,10 @@ The interactive wizard will generate a configuration file like `s3-my-tutorial-b
 
 ```bash
 # Preview what will be created (safe - no changes made)
-./genesys execute s3-my-tutorial-bucket-*.yaml --dry-run
+genesys execute s3-my-tutorial-bucket-*.yaml --dry-run
 
 # Deploy the bucket
-./genesys execute s3-my-tutorial-bucket-*.yaml
+genesys execute s3-my-tutorial-bucket-*.yaml
 ```
 
 Success! Your S3 bucket is now created with secure defaults.
@@ -78,7 +103,7 @@ Success! Your S3 bucket is now created with secure defaults.
 
 ```bash
 # Start interactive mode again
-./genesys interact
+genesys interact
 ```
 
 Follow this workflow:
@@ -95,10 +120,10 @@ The wizard will generate `ec2-my-dev-server-1234567890.toml` with cost estimates
 
 ```bash
 # Preview the instance creation
-./genesys execute ec2-my-dev-server-*.toml --dry-run
+genesys execute ec2-my-dev-server-*.toml --dry-run
 
 # Deploy the instance
-./genesys execute ec2-my-dev-server-*.toml
+genesys execute ec2-my-dev-server-*.toml
 ```
 
 ### Step 6: Deploy Your First Lambda Function
@@ -123,7 +148,7 @@ touch requirements.txt
 cd ..
 
 # Start interactive Lambda creation
-./genesys interact
+genesys interact
 ```
 
 Follow this workflow:
@@ -145,10 +170,10 @@ The wizard will generate `lambda-my-first-function-*.toml` and automatically:
 
 ```bash
 # Preview the Lambda deployment
-./genesys execute lambda-my-first-function-*.toml --dry-run
+genesys execute lambda-my-first-function-*.toml --dry-run
 
 # Deploy the Lambda function
-./genesys execute lambda-my-first-function-*.toml --apply
+genesys execute lambda-my-first-function-*.toml --apply
 ```
 
 Success! Your Lambda is deployed with a public HTTPS URL you can test immediately.
@@ -157,26 +182,26 @@ Success! Your Lambda is deployed with a public HTTPS URL you can test immediatel
 
 ```bash
 # List all resources you've created
-./genesys list resources
+genesys list resources
 
 # List only storage resources
-./genesys list resources --service storage
+genesys list resources --service storage
 
 # List only compute instances  
-./genesys list resources --service compute
+genesys list resources --service compute
 ```
 
 ### Step 8: Clean Up (When Done)
 
 ```bash
 # Delete the Lambda function (includes IAM role cleanup)
-./genesys execute deletion lambda-my-first-function-*.toml
+genesys execute deletion lambda-my-first-function-*.toml
 
 # Delete the EC2 instance
-./genesys execute deletion ec2-my-dev-server-*.toml
+genesys execute deletion ec2-my-dev-server-*.toml
 
 # Delete the S3 bucket
-./genesys execute deletion s3-my-tutorial-bucket-*.yaml
+genesys execute deletion s3-my-tutorial-bucket-*.yaml
 ```
 
 ## What Can You Create?
@@ -630,6 +655,24 @@ genesys list resources --output json  # Get detailed resource information
 - **Configuration Generation** - TOML/YAML files for version control and repeatability
 - **Validation First** - Extensive validation before any cloud API calls
 - **State Awareness** - Tracks resources locally to prevent conflicts
+
+## Uninstallation
+
+### Remove Local Installation
+```bash
+# Navigate to the genesys directory
+cd genesys
+make uninstall-local
+```
+
+### Remove System-wide Installation
+```bash
+# Navigate to the genesys directory
+cd genesys
+sudo make uninstall
+```
+
+This will remove the genesys binary and all shell completions. Your generated configuration files and cloud resources will remain untouched.
 
 ---
 

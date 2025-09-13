@@ -6,30 +6,29 @@ import (
 	"testing"
 )
 
-func TestLoadConfig_YAML(t *testing.T) {
-	// Create temporary YAML file
-	yamlContent := `
-provider: aws
-region: us-east-1
+func TestLoadConfig_TOML(t *testing.T) {
+	// Create temporary TOML file
+	tomlContent := `
+provider = "aws"
+region = "us-east-1"
 
-resources:
-  compute:
-    - name: test-server
-      type: medium
-      count: 2
-  
-  storage:
-    - name: test-bucket
-      type: bucket
-      versioning: true
+[[resources.compute]]
+name = "test-server"
+type = "medium"
+count = 2
 
-policies:
-  require_encryption: true
-  max_cost_per_month: 100
+[[resources.storage]]
+name = "test-bucket"
+type = "bucket"
+versioning = true
+
+[policies]
+require_encryption = true
+max_cost_per_month = 100.0
 `
 
-	tempFile := filepath.Join(t.TempDir(), "test.yaml")
-	err := os.WriteFile(tempFile, []byte(yamlContent), 0644)
+	tempFile := filepath.Join(t.TempDir(), "test.toml")
+	err := os.WriteFile(tempFile, []byte(tomlContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
@@ -82,7 +81,7 @@ policies:
 	}
 }
 
-func TestLoadConfig_TOML(t *testing.T) {
+func TestLoadConfig_Database(t *testing.T) {
 	tomlContent := `
 provider = "gcp"
 region = "us-central1"
@@ -195,7 +194,7 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
-func TestSaveConfig_YAML(t *testing.T) {
+func TestSaveConfig_TOML(t *testing.T) {
 	config := &Config{
 		Provider: "aws",
 		Region:   "us-east-1",
@@ -215,7 +214,7 @@ func TestSaveConfig_YAML(t *testing.T) {
 		},
 	}
 
-	tempFile := filepath.Join(t.TempDir(), "output.yaml")
+	tempFile := filepath.Join(t.TempDir(), "output.toml")
 	err := SaveConfig(config, tempFile)
 	if err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
@@ -238,5 +237,28 @@ func TestSaveConfig_YAML(t *testing.T) {
 
 	if len(loadedConfig.Resources.Compute) != 1 {
 		t.Errorf("Expected 1 compute resource, got %d", len(loadedConfig.Resources.Compute))
+	}
+}
+
+func TestLoadConfig_NoExtension(t *testing.T) {
+	// Test that files without extension are treated as TOML
+	tomlContent := `
+provider = "azure"
+region = "westus2"
+`
+
+	tempFile := filepath.Join(t.TempDir(), "config")
+	err := os.WriteFile(tempFile, []byte(tomlContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+
+	config, err := LoadConfig(tempFile)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if config.Provider != "azure" {
+		t.Errorf("Expected provider 'azure', got '%s'", config.Provider)
 	}
 }

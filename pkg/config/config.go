@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"gopkg.in/yaml.v3"
 )
 
 // ConfigManager handles configuration loading and reloading
@@ -21,139 +20,139 @@ type ConfigManager struct {
 
 // Config represents the main configuration structure
 type Config struct {
-	Provider  string             `yaml:"provider" toml:"provider"`
-	Region    string             `yaml:"region" toml:"region"`
-	Project   string             `yaml:"project,omitempty" toml:"project,omitempty"` // For GCP
-	Outcomes  map[string]Outcome `yaml:"outcomes,omitempty" toml:"outcomes,omitempty"`
-	Resources Resources          `yaml:"resources,omitempty" toml:"resources,omitempty"`
-	State     StateConfig        `yaml:"state,omitempty" toml:"state,omitempty"`
-	Policies  Policies           `yaml:"policies,omitempty" toml:"policies,omitempty"`
+	Provider  string             `toml:"provider"`
+	Region    string             `toml:"region"`
+	Project   string             `toml:"project,omitempty"` // For GCP
+	Outcomes  map[string]Outcome `toml:"outcomes,omitempty"`
+	Resources Resources          `toml:"resources,omitempty"`
+	State     StateConfig        `toml:"state,omitempty"`
+	Policies  Policies           `toml:"policies,omitempty"`
 }
 
 // Outcome represents a high-level deployment outcome
 type Outcome struct {
 	// Static Site
-	Domain      string `yaml:"domain,omitempty" toml:"domain,omitempty"`
-	EnableCDN   bool   `yaml:"enable_cdn,omitempty" toml:"enable_cdn,omitempty"`
-	EnableHTTPS bool   `yaml:"enable_https,omitempty" toml:"enable_https,omitempty"`
+	Domain      string `toml:"domain,omitempty"`
+	EnableCDN   bool   `toml:"enable_cdn,omitempty"`
+	EnableHTTPS bool   `toml:"enable_https,omitempty"`
 
 	// API/Function
-	Name    string `yaml:"name,omitempty" toml:"name,omitempty"`
-	Runtime string `yaml:"runtime,omitempty" toml:"runtime,omitempty"`
-	Memory  int    `yaml:"memory,omitempty" toml:"memory,omitempty"`
-	Timeout int    `yaml:"timeout,omitempty" toml:"timeout,omitempty"`
+	Name    string `toml:"name,omitempty"`
+	Runtime string `toml:"runtime,omitempty"`
+	Memory  int    `toml:"memory,omitempty"`
+	Timeout int    `toml:"timeout,omitempty"`
 
 	// Database
-	Engine  string `yaml:"engine,omitempty" toml:"engine,omitempty"`
-	Version string `yaml:"version,omitempty" toml:"version,omitempty"`
-	Size    string `yaml:"size,omitempty" toml:"size,omitempty"`
+	Engine  string `toml:"engine,omitempty"`
+	Version string `toml:"version,omitempty"`
+	Size    string `toml:"size,omitempty"`
 }
 
 // Resources represents infrastructure resources
 type Resources struct {
-	Compute    []ComputeResource    `yaml:"compute,omitempty" toml:"compute,omitempty"`
-	Storage    []StorageResource    `yaml:"storage,omitempty" toml:"storage,omitempty"`
-	Network    []NetworkResource    `yaml:"network,omitempty" toml:"network,omitempty"`
-	Database   []DatabaseResource   `yaml:"database,omitempty" toml:"database,omitempty"`
-	Serverless []ServerlessResource `yaml:"serverless,omitempty" toml:"serverless,omitempty"`
+	Compute    []ComputeResource    `toml:"compute,omitempty"`
+	Storage    []StorageResource    `toml:"storage,omitempty"`
+	Network    []NetworkResource    `toml:"network,omitempty"`
+	Database   []DatabaseResource   `toml:"database,omitempty"`
+	Serverless []ServerlessResource `toml:"serverless,omitempty"`
 }
 
 // ComputeResource represents a compute instance configuration
 type ComputeResource struct {
-	Name           string            `yaml:"name" toml:"name"`
-	Type           string            `yaml:"type" toml:"type"` // small|medium|large|xlarge
-	Image          string            `yaml:"image" toml:"image"`
-	Count          int               `yaml:"count,omitempty" toml:"count,omitempty"`
-	Network        string            `yaml:"network,omitempty" toml:"network,omitempty"`
-	SecurityGroups []string          `yaml:"security_groups,omitempty" toml:"security_groups,omitempty"`
-	Tags           map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name           string            `toml:"name"`
+	Type           string            `toml:"type"` // small|medium|large|xlarge
+	Image          string            `toml:"image"`
+	Count          int               `toml:"count,omitempty"`
+	Network        string            `toml:"network,omitempty"`
+	SecurityGroups []string          `toml:"security_groups,omitempty"`
+	Tags           map[string]string `toml:"tags,omitempty"`
 }
 
 // StorageResource represents storage configuration
 type StorageResource struct {
-	Name         string            `yaml:"name" toml:"name"`
-	Type         string            `yaml:"type" toml:"type"` // bucket|volume
-	Versioning   bool              `yaml:"versioning,omitempty" toml:"versioning,omitempty"`
-	Encryption   bool              `yaml:"encryption,omitempty" toml:"encryption,omitempty"`
-	PublicAccess bool              `yaml:"public_access,omitempty" toml:"public_access,omitempty"`
-	Lifecycle    *LifecycleConfig  `yaml:"lifecycle,omitempty" toml:"lifecycle,omitempty"`
-	Tags         map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name         string            `toml:"name"`
+	Type         string            `toml:"type"` // bucket|volume
+	Versioning   bool              `toml:"versioning,omitempty"`
+	Encryption   bool              `toml:"encryption,omitempty"`
+	PublicAccess bool              `toml:"public_access,omitempty"`
+	Lifecycle    *LifecycleConfig  `toml:"lifecycle,omitempty"`
+	Tags         map[string]string `toml:"tags,omitempty"`
 }
 
 // LifecycleConfig for storage lifecycle
 type LifecycleConfig struct {
-	DeleteAfterDays  int `yaml:"delete_after_days,omitempty" toml:"delete_after_days,omitempty"`
-	ArchiveAfterDays int `yaml:"archive_after_days,omitempty" toml:"archive_after_days,omitempty"`
+	DeleteAfterDays  int `toml:"delete_after_days,omitempty"`
+	ArchiveAfterDays int `toml:"archive_after_days,omitempty"`
 }
 
 // NetworkResource represents network configuration
 type NetworkResource struct {
-	Name    string            `yaml:"name" toml:"name"`
-	CIDR    string            `yaml:"cidr" toml:"cidr"`
-	Subnets []SubnetConfig    `yaml:"subnets,omitempty" toml:"subnets,omitempty"`
-	Tags    map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name    string            `toml:"name"`
+	CIDR    string            `toml:"cidr"`
+	Subnets []SubnetConfig    `toml:"subnets,omitempty"`
+	Tags    map[string]string `toml:"tags,omitempty"`
 }
 
 // SubnetConfig represents subnet configuration
 type SubnetConfig struct {
-	Name   string `yaml:"name" toml:"name"`
-	CIDR   string `yaml:"cidr" toml:"cidr"`
-	Public bool   `yaml:"public,omitempty" toml:"public,omitempty"`
-	AZ     string `yaml:"az,omitempty" toml:"az,omitempty"`
+	Name   string `toml:"name"`
+	CIDR   string `toml:"cidr"`
+	Public bool   `toml:"public,omitempty"`
+	AZ     string `toml:"az,omitempty"`
 }
 
 // DatabaseResource represents database configuration
 type DatabaseResource struct {
-	Name    string            `yaml:"name" toml:"name"`
-	Engine  string            `yaml:"engine" toml:"engine"`
-	Version string            `yaml:"version" toml:"version"`
-	Size    string            `yaml:"size" toml:"size"`       // small|medium|large
-	Storage int               `yaml:"storage" toml:"storage"` // GB
-	MultiAZ bool              `yaml:"multi_az,omitempty" toml:"multi_az,omitempty"`
-	Backup  *BackupConfig     `yaml:"backup,omitempty" toml:"backup,omitempty"`
-	Tags    map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name    string            `toml:"name"`
+	Engine  string            `toml:"engine"`
+	Version string            `toml:"version"`
+	Size    string            `toml:"size"`       // small|medium|large
+	Storage int               `toml:"storage"` // GB
+	MultiAZ bool              `toml:"multi_az,omitempty"`
+	Backup  *BackupConfig     `toml:"backup,omitempty"`
+	Tags    map[string]string `toml:"tags,omitempty"`
 }
 
 // BackupConfig for database backups
 type BackupConfig struct {
-	RetentionDays int    `yaml:"retention_days" toml:"retention_days"`
-	Window        string `yaml:"window,omitempty" toml:"window,omitempty"`
+	RetentionDays int    `toml:"retention_days"`
+	Window        string `toml:"window,omitempty"`
 }
 
 // ServerlessResource represents serverless function configuration
 type ServerlessResource struct {
-	Name        string            `yaml:"name" toml:"name"`
-	Runtime     string            `yaml:"runtime" toml:"runtime"`
-	Handler     string            `yaml:"handler" toml:"handler"`
-	Memory      int               `yaml:"memory,omitempty" toml:"memory,omitempty"`
-	Timeout     int               `yaml:"timeout,omitempty" toml:"timeout,omitempty"`
-	Environment map[string]string `yaml:"environment,omitempty" toml:"environment,omitempty"`
-	Triggers    []TriggerConfig   `yaml:"triggers,omitempty" toml:"triggers,omitempty"`
-	Tags        map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name        string            `toml:"name"`
+	Runtime     string            `toml:"runtime"`
+	Handler     string            `toml:"handler"`
+	Memory      int               `toml:"memory,omitempty"`
+	Timeout     int               `toml:"timeout,omitempty"`
+	Environment map[string]string `toml:"environment,omitempty"`
+	Triggers    []TriggerConfig   `toml:"triggers,omitempty"`
+	Tags        map[string]string `toml:"tags,omitempty"`
 }
 
 // TriggerConfig for serverless triggers
 type TriggerConfig struct {
-	Type     string   `yaml:"type" toml:"type"` // http|schedule|queue|storage
-	Path     string   `yaml:"path,omitempty" toml:"path,omitempty"`
-	Methods  []string `yaml:"methods,omitempty" toml:"methods,omitempty"`
-	Schedule string   `yaml:"schedule,omitempty" toml:"schedule,omitempty"`
+	Type     string   `toml:"type"` // http|schedule|queue|storage
+	Path     string   `toml:"path,omitempty"`
+	Methods  []string `toml:"methods,omitempty"`
+	Schedule string   `toml:"schedule,omitempty"`
 }
 
 // StateConfig for state management
 type StateConfig struct {
-	Backend   string `yaml:"backend,omitempty" toml:"backend,omitempty"` // s3|gcs|azureblob|local
-	Bucket    string `yaml:"bucket,omitempty" toml:"bucket,omitempty"`
-	LockTable string `yaml:"lock_table,omitempty" toml:"lock_table,omitempty"`
-	Encrypt   bool   `yaml:"encrypt,omitempty" toml:"encrypt,omitempty"`
+	Backend   string `toml:"backend,omitempty"` // s3|gcs|azureblob|local
+	Bucket    string `toml:"bucket,omitempty"`
+	LockTable string `toml:"lock_table,omitempty"`
+	Encrypt   bool   `toml:"encrypt,omitempty"`
 }
 
 // Policies for governance
 type Policies struct {
-	NoPublicBuckets   bool     `yaml:"no_public_buckets,omitempty" toml:"no_public_buckets,omitempty"`
-	RequireEncryption bool     `yaml:"require_encryption,omitempty" toml:"require_encryption,omitempty"`
-	RequireTags       []string `yaml:"require_tags,omitempty" toml:"require_tags,omitempty"`
-	MaxCostPerMonth   float64  `yaml:"max_cost_per_month,omitempty" toml:"max_cost_per_month,omitempty"`
+	NoPublicBuckets   bool     `toml:"no_public_buckets,omitempty"`
+	RequireEncryption bool     `toml:"require_encryption,omitempty"`
+	RequireTags       []string `toml:"require_tags,omitempty"`
+	MaxCostPerMonth   float64  `toml:"max_cost_per_month,omitempty"`
 }
 
 // LoadConfig loads configuration from a file
@@ -165,26 +164,18 @@ func LoadConfig(path string) (*Config, error) {
 
 	var config Config
 
-	// Detect format by extension
+	// Only support TOML format
 	switch filepath.Ext(path) {
-	case ".yaml", ".yml":
-		err = yaml.Unmarshal(data, &config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse YAML: %w", err)
-		}
 	case ".toml":
 		_, err = toml.Decode(string(data), &config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse TOML: %w", err)
 		}
 	default:
-		// Try to auto-detect format
-		err = yaml.Unmarshal(data, &config)
+		// Try to parse as TOML
+		_, err = toml.Decode(string(data), &config)
 		if err != nil {
-			_, err = toml.Decode(string(data), &config)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse config (tried YAML and TOML): %w", err)
-			}
+			return nil, fmt.Errorf("failed to parse config as TOML: %w", err)
 		}
 	}
 
@@ -203,15 +194,15 @@ func SaveConfig(config *Config, path string) error {
 	var err error
 
 	switch filepath.Ext(path) {
-	case ".yaml", ".yml":
-		data, err = yaml.Marshal(config)
 	case ".toml":
 		buf := new(bytes.Buffer)
 		err = toml.NewEncoder(buf).Encode(config)
 		data = buf.Bytes()
 	default:
-		// Default to YAML
-		data, err = yaml.Marshal(config)
+		// Default to TOML
+		buf := new(bytes.Buffer)
+		err = toml.NewEncoder(buf).Encode(config)
+		data = buf.Bytes()
 	}
 
 	if err != nil {

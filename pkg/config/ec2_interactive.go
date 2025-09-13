@@ -17,51 +17,52 @@ import (
 
 // EC2ComputeResource represents a compute resource configuration
 type EC2ComputeResource struct {
-	Name           string            `yaml:"name" toml:"name"`
-	Type           string            `yaml:"type" toml:"type"`
-	Image          string            `yaml:"image" toml:"image"`
-	Count          int               `yaml:"count,omitempty" toml:"count,omitempty"`
-	KeyPair        string            `yaml:"key_pair,omitempty" toml:"key_pair,omitempty"`
-	SecurityGroups []string          `yaml:"security_groups,omitempty" toml:"security_groups,omitempty"`
-	SubnetId       string            `yaml:"subnet_id,omitempty" toml:"subnet_id,omitempty"`
-	PublicIP       bool              `yaml:"public_ip,omitempty" toml:"public_ip,omitempty"`
-	UserData       string            `yaml:"user_data,omitempty" toml:"user_data,omitempty"`
-	Storage        *EC2StorageConfig `yaml:"storage,omitempty" toml:"storage,omitempty"`
-	Tags           map[string]string `yaml:"tags,omitempty" toml:"tags,omitempty"`
+	Name           string            `toml:"name"`
+	Type           string            `toml:"type"`
+	Image          string            `toml:"image"`
+	Count          int               `toml:"count,omitempty"`
+	KeyPair        string            `toml:"key_pair,omitempty"`
+	SecurityGroups []string          `toml:"security_groups,omitempty"`
+	SubnetId       string            `toml:"subnet_id,omitempty"`
+	PublicIP       bool              `toml:"public_ip,omitempty"`
+	UserData       string            `toml:"user_data,omitempty"`
+	Storage        *EC2StorageConfig `toml:"storage,omitempty"`
+	Tags           map[string]string `toml:"tags,omitempty"`
 }
 
 // EC2StorageConfig represents EBS storage configuration
 type EC2StorageConfig struct {
-	Size         int    `yaml:"size" toml:"size"`                                   // GB
-	VolumeType   string `yaml:"volume_type,omitempty" toml:"volume_type,omitempty"` // gp3, gp2, io1, etc.
-	Encrypted    bool   `yaml:"encrypted,omitempty" toml:"encrypted,omitempty"`
-	DeleteOnTerm bool   `yaml:"delete_on_termination,omitempty" toml:"delete_on_termination,omitempty"`
+	Size         int    `toml:"size"`                                   // GB
+	VolumeType   string `toml:"volume_type,omitempty"` // gp3, gp2, io1, etc.
+	Encrypted    bool   `toml:"encrypted,omitempty"`
+	DeleteOnTerm bool   `toml:"delete_on_termination,omitempty"`
 }
 
 // EC2InstanceConfig represents a simple EC2 instance configuration
 type EC2InstanceConfig struct {
-	Provider string `yaml:"provider" toml:"provider"`
-	Region   string `yaml:"region" toml:"region"`
+	Provider string `toml:"provider"`
+	Region   string `toml:"region"`
 
 	Resources struct {
-		Compute []EC2ComputeResource `yaml:"compute" toml:"compute"`
-	} `yaml:"resources" toml:"resources"`
+		Compute []EC2ComputeResource `toml:"compute"`
+	} `toml:"resources"`
 
 	Policies struct {
-		RequireEncryption bool     `yaml:"require_encryption" toml:"require_encryption"`
-		NoPublicInstances bool     `yaml:"no_public_instances" toml:"no_public_instances"`
-		RequireTags       []string `yaml:"require_tags,omitempty" toml:"require_tags,omitempty"`
-	} `yaml:"policies" toml:"policies"`
+		RequireEncryption bool     `toml:"require_encryption"`
+		NoPublicInstances bool     `toml:"no_public_instances"`
+		RequireTags       []string `toml:"require_tags,omitempty"`
+	} `toml:"policies"`
 
-	AMILookup *EC2AMILookupConfig `yaml:"ami_lookup,omitempty" toml:"ami_lookup,omitempty"`
+	AMILookup *EC2AMILookupConfig `toml:"ami_lookup,omitempty"`
+	IAM       *UnifiedIAMConfig   `toml:"iam,omitempty"`
 }
 
 // EC2AMILookupConfig controls AMI resolution behavior
 type EC2AMILookupConfig struct {
-	Strategy         string `yaml:"strategy,omitempty" toml:"strategy,omitempty"`                     // "auto", "ssm", "describe", "static"
-	DisableCache     bool   `yaml:"disable_cache,omitempty" toml:"disable_cache,omitempty"`           // Disable AMI caching
-	CacheTTLHours    int    `yaml:"cache_ttl_hours,omitempty" toml:"cache_ttl_hours,omitempty"`       // Cache TTL in hours (default 24)
-	FallbackToStatic bool   `yaml:"fallback_to_static,omitempty" toml:"fallback_to_static,omitempty"` // Allow fallback to static mappings
+	Strategy         string `toml:"strategy,omitempty"`                     // "auto", "ssm", "describe", "static"
+	DisableCache     bool   `toml:"disable_cache,omitempty"`           // Disable AMI caching
+	CacheTTLHours    int    `toml:"cache_ttl_hours,omitempty"`       // Cache TTL in hours (default 24)
+	FallbackToStatic bool   `toml:"fallback_to_static,omitempty"` // Allow fallback to static mappings
 }
 
 // InteractiveEC2Config manages interactive EC2 instance configuration
@@ -122,6 +123,15 @@ func (iec *InteractiveEC2Config) CreateInstanceConfig() (*EC2InstanceConfig, str
 		}
 	}
 
+	// Get IAM role configuration
+	iamConfig, err := iec.getIAMConfiguration(instanceName)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get IAM configuration: %w", err)
+	}
+	if iamConfig != nil {
+		config.IAM = iamConfig
+	}
+
 	return config, instanceName, nil
 }
 
@@ -166,7 +176,7 @@ func (iec *InteractiveEC2Config) getInstanceName() (string, error) {
 
 	// Check for existing instances with the same name
 	if err := iec.validateUniqueName(formattedName); err != nil {
-		fmt.Printf("⚠️  %v\n", err)
+		fmt.Printf("Warning: %v\n", err)
 		fmt.Println("Please choose a different name...")
 		return iec.getInstanceName() // Ask again
 	}
@@ -666,6 +676,151 @@ func (iec *InteractiveEC2Config) checkAWSInstances(name string) error {
 	}
 
 	return nil
+}
+
+func (iec *InteractiveEC2Config) getIAMConfiguration(instanceName string) (*UnifiedIAMConfig, error) {
+	var configureIAM bool
+	iamPrompt := &survey.Confirm{
+		Message: "Configure IAM instance profile for EC2?",
+		Help:    "Create or use an existing IAM role that will be attached as an instance profile for AWS service access",
+		Default: false,
+	}
+	if err := survey.AskOne(iamPrompt, &configureIAM); err != nil {
+		return nil, err
+	}
+
+	if !configureIAM {
+		return nil, nil
+	}
+
+	iamConfig := &UnifiedIAMConfig{}
+
+	// Ask if they want to use existing role or create new one
+	roleOptions := []string{
+		"create-new (Create a new IAM role automatically)",
+		"use-existing (Use an existing IAM role)",
+	}
+
+	var selectedOption string
+	roleOptionPrompt := &survey.Select{
+		Message: "IAM Role Configuration:",
+		Options: roleOptions,
+		Default: roleOptions[0],
+		Help:    "Genesys can create a new role with proper EC2 permissions or use an existing role",
+	}
+	if err := survey.AskOne(roleOptionPrompt, &selectedOption); err != nil {
+		return nil, err
+	}
+
+	if strings.HasPrefix(selectedOption, "use-existing") {
+		// Use existing role
+		var existingRoleName string
+		existingRolePrompt := &survey.Input{
+			Message: "Existing IAM role name or ARN:",
+			Help:    "Enter the name or full ARN of an existing IAM role",
+		}
+		if err := survey.AskOne(existingRolePrompt, &existingRoleName, survey.WithValidator(survey.Required)); err != nil {
+			return nil, err
+		}
+
+		// Check if it's an ARN or just a name
+		if strings.HasPrefix(existingRoleName, "arn:aws:iam::") {
+			iamConfig.RoleArn = existingRoleName
+			// Extract role name from ARN
+			parts := strings.Split(existingRoleName, "/")
+			if len(parts) > 0 {
+				iamConfig.RoleName = parts[len(parts)-1]
+			}
+		} else {
+			iamConfig.RoleName = existingRoleName
+		}
+
+		iamConfig.AutoManage = false
+		iamConfig.AutoCleanup = false
+		iamConfig.ManagedBy = "external"
+	} else {
+		// Create new role
+		iamConfig.AutoManage = true
+		iamConfig.AutoCleanup = true
+		
+		// Generate default role name
+		defaultRoleName := FormatRoleName("ec2", instanceName)
+		
+		var customName bool
+		customNamePrompt := &survey.Confirm{
+			Message: fmt.Sprintf("Use default role name '%s'?", defaultRoleName),
+			Default: true,
+		}
+		if err := survey.AskOne(customNamePrompt, &customName); err != nil {
+			return nil, err
+		}
+
+		if customName {
+			iamConfig.RoleName = defaultRoleName
+		} else {
+			var customRoleName string
+			customRolePrompt := &survey.Input{
+				Message: "Custom IAM role name:",
+				Help:    "Enter a custom name for the new IAM role",
+			}
+			if err := survey.AskOne(customRolePrompt, &customRoleName, survey.WithValidator(survey.Required)); err != nil {
+				return nil, err
+			}
+			iamConfig.RoleName = customRoleName
+		}
+	}
+
+	// Configure permissions
+	fmt.Println("\nIAM Role Permissions:")
+	
+	defaultPolicies := getDefaultPoliciesForResource("ec2")
+	fmt.Println("Default policies for EC2 access:")
+	for i, policy := range defaultPolicies {
+		fmt.Printf("  %d. %s\n", i+1, policy)
+	}
+
+	var useDefaults bool
+	defaultsPrompt := &survey.Confirm{
+		Message: "Use default EC2 permissions?",
+		Help:    "These permissions allow Systems Manager access and CloudWatch logging",
+		Default: true,
+	}
+	if err := survey.AskOne(defaultsPrompt, &useDefaults); err != nil {
+		return nil, err
+	}
+
+	if useDefaults {
+		iamConfig.RequiredPolicies = defaultPolicies
+	} else {
+		// Let them choose custom policies
+		availablePolicies := []string{
+			"Systems Manager Parameter access",
+			"CloudWatch full access",
+			"S3 full access",
+			"S3 read-only access", 
+			"DynamoDB read/write access",
+			"Lambda full access",
+			"Secrets Manager read access",
+			"X-Ray tracing",
+		}
+
+		var selectedPolicies []string
+		policyPrompt := &survey.MultiSelect{
+			Message: "Select required policies:",
+			Options: availablePolicies,
+			Default: []string{"Systems Manager Parameter access", "CloudWatch full access"},
+			Help:    "Choose the AWS managed policies this role should have",
+		}
+		if err := survey.AskOne(policyPrompt, &selectedPolicies); err != nil {
+			return nil, err
+		}
+		iamConfig.RequiredPolicies = selectedPolicies
+	}
+
+	// Set trust policy
+	iamConfig.TrustPolicy = "ec2"
+
+	return iamConfig, nil
 }
 
 // SaveConfig saves the EC2 instance configuration to a file
