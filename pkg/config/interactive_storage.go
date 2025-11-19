@@ -46,7 +46,7 @@ func (ic *InteractiveConfig) SaveProviderConfig(config *ProviderCredentials) err
 func (ic *InteractiveConfig) saveGlobalConfig(defaultProvider string) error {
 	globalConfig := map[string]interface{}{
 		"default_provider": defaultProvider,
-		"version":         "1.0",
+		"version":          "1.0",
 	}
 
 	globalFile := filepath.Join(ic.configDir, "config.json")
@@ -239,7 +239,7 @@ func (ic *InteractiveConfig) validateTencentCredentials(config *ProviderCredenti
 // LoadProviderConfig loads a provider configuration from disk
 func (ic *InteractiveConfig) LoadProviderConfig(provider string) (*ProviderCredentials, error) {
 	providerFile := filepath.Join(ic.configDir, fmt.Sprintf("%s.json", provider))
-	
+
 	data, err := os.ReadFile(providerFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read provider config: %w", err)
@@ -270,4 +270,133 @@ func (ic *InteractiveConfig) ListConfiguredProviders() ([]string, error) {
 	}
 
 	return providers, nil
+}
+
+// InteractiveBlobConfig manages interactive Azure Blob Storage configuration
+type InteractiveBlobConfig struct {
+	configDir string
+}
+
+// NewInteractiveBlobConfig creates a new interactive Azure Blob Storage configuration manager
+func NewInteractiveBlobConfig() (*InteractiveBlobConfig, error) {
+	ic, err := NewInteractiveConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return &InteractiveBlobConfig{
+		configDir: ic.configDir,
+	}, nil
+}
+
+// CreateStorageConfig creates an interactive Azure Blob Storage configuration
+func (ibc *InteractiveBlobConfig) CreateStorageConfig() (interface{}, string, error) {
+	accountName := "genesysblobstorage"
+	config := map[string]interface{}{
+		"provider": "azure",
+		"storage": map[string]interface{}{
+			"account_name": accountName,
+			"type":         "blob",
+		},
+	}
+	return config, accountName, nil
+}
+
+// SaveConfig saves the Azure Blob Storage configuration
+func (ibc *InteractiveBlobConfig) SaveConfig(config interface{}, accountName string) (string, error) {
+	configPath := filepath.Join(ibc.configDir, fmt.Sprintf("azure-blob-%s.json", accountName))
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return "", err
+	}
+	return configPath, nil
+}
+
+// InteractiveGCSConfig manages interactive Google Cloud Storage configuration
+type InteractiveGCSConfig struct {
+	configDir string
+}
+
+// NewInteractiveGCSConfig creates a new interactive GCS configuration manager
+func NewInteractiveGCSConfig() (*InteractiveGCSConfig, error) {
+	ic, err := NewInteractiveConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return &InteractiveGCSConfig{
+		configDir: ic.configDir,
+	}, nil
+}
+
+// CreateBucketConfig creates an interactive GCS bucket configuration
+func (igc *InteractiveGCSConfig) CreateBucketConfig() (interface{}, string, error) {
+	bucketName := "genesys-gcs-bucket"
+	config := map[string]interface{}{
+		"provider": "gcp",
+		"storage": map[string]interface{}{
+			"bucket_name": bucketName,
+			"type":        "bucket",
+		},
+	}
+	return config, bucketName, nil
+}
+
+// SaveConfig saves the GCS bucket configuration
+func (igc *InteractiveGCSConfig) SaveConfig(config interface{}, bucketName string) (string, error) {
+	configPath := filepath.Join(igc.configDir, fmt.Sprintf("gcs-bucket-%s.json", bucketName))
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return "", err
+	}
+	return configPath, nil
+}
+
+// InteractiveCOSConfig manages interactive Tencent COS configuration
+type InteractiveCOSConfig struct {
+	configDir string
+}
+
+// NewInteractiveCOSConfig creates a new interactive Tencent COS configuration manager
+func NewInteractiveCOSConfig() (*InteractiveCOSConfig, error) {
+	ic, err := NewInteractiveConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return &InteractiveCOSConfig{
+		configDir: ic.configDir,
+	}, nil
+}
+
+// CreateBucketConfig creates an interactive Tencent COS bucket configuration
+func (icc *InteractiveCOSConfig) CreateBucketConfig() (interface{}, string, error) {
+	bucketName := "genesys-cos-bucket"
+	config := map[string]interface{}{
+		"provider": "tencent",
+		"storage": map[string]interface{}{
+			"bucket_name": bucketName,
+			"type":        "cos",
+		},
+	}
+	return config, bucketName, nil
+}
+
+// SaveConfig saves the Tencent COS bucket configuration
+func (icc *InteractiveCOSConfig) SaveConfig(config interface{}, bucketName string) (string, error) {
+	configPath := filepath.Join(icc.configDir, fmt.Sprintf("tencent-cos-%s.json", bucketName))
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return "", err
+	}
+	return configPath, nil
 }

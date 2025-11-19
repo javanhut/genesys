@@ -97,6 +97,9 @@ type LambdaIAM struct {
 	PolicyDetails    map[string]string `toml:"policy_details,omitempty"` // Policy ARN -> Description mapping
 }
 
+// UnifiedIAMConfig is an alias for LambdaIAM to support unified IAM role management
+type UnifiedIAMConfig = LambdaIAM
+
 // CreateLambdaConfig creates Lambda configuration interactively
 func (ilc *InteractiveLambdaConfig) CreateLambdaConfig() (*LambdaFunctionConfig, string, error) {
 	fmt.Println("Lambda Function Configuration")

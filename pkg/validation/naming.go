@@ -318,3 +318,133 @@ func IsValidName(resourceType, name string) error {
 
 	return nil
 }
+
+// S3BucketNameError represents a detailed error for S3 bucket name validation
+type S3BucketNameError struct {
+	BucketName string
+	Reason     string
+	Suggestion string
+}
+
+func (e *S3BucketNameError) Error() string {
+	if e.Suggestion != "" {
+		return fmt.Sprintf("%s (suggestion: %s)", e.Reason, e.Suggestion)
+	}
+	return e.Reason
+}
+
+// ValidateS3BucketName validates an S3 bucket name with detailed error messages and suggestions
+func ValidateS3BucketName(name string) error {
+	if name == "" {
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name cannot be empty",
+			Suggestion: "genesys-bucket-" + time.Now().Format("20060102"),
+		}
+	}
+
+	// Check length constraints
+	if len(name) < 3 {
+		suggestion := formatS3Name(name)
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name must be at least 3 characters",
+			Suggestion: suggestion,
+		}
+	}
+
+	if len(name) > 63 {
+		suggestion := formatS3Name(name[:63])
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name must be at most 63 characters",
+			Suggestion: suggestion,
+		}
+	}
+
+	// Check if name contains uppercase letters
+	if name != strings.ToLower(name) {
+		suggestion := formatS3Name(name)
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name must be lowercase",
+			Suggestion: suggestion,
+		}
+	}
+
+	// Check if starts or ends with valid characters
+	if matched, _ := regexp.MatchString(`^[^a-z0-9]`, name); matched {
+		suggestion := formatS3Name(name)
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name must start with a lowercase letter or number",
+			Suggestion: suggestion,
+		}
+	}
+
+	if matched, _ := regexp.MatchString(`[^a-z0-9]$`, name); matched {
+		suggestion := formatS3Name(name)
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name must end with a lowercase letter or number",
+			Suggestion: suggestion,
+		}
+	}
+
+	// Check for IP address format (not allowed)
+	if matched, _ := regexp.MatchString(`^\d+\.\d+\.\d+\.\d+$`, name); matched {
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name cannot be formatted as an IP address",
+			Suggestion: "genesys-" + strings.ReplaceAll(name, ".", "-"),
+		}
+	}
+
+	// Check for invalid characters
+	if matched, _ := regexp.MatchString(`[^a-z0-9.-]`, name); matched {
+		suggestion := formatS3Name(name)
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name can only contain lowercase letters, numbers, dots, and hyphens",
+			Suggestion: suggestion,
+		}
+	}
+
+	// Check for consecutive dots or dot-dash combinations
+	if strings.Contains(name, "..") || strings.Contains(name, ".-") || strings.Contains(name, "-.") {
+		suggestion := formatS3Name(name)
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name cannot contain consecutive dots or dot-dash combinations",
+			Suggestion: suggestion,
+		}
+	}
+
+	// Check for reserved prefixes
+	if strings.HasPrefix(name, "xn--") {
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name cannot start with 'xn--' prefix",
+			Suggestion: "genesys-" + name,
+		}
+	}
+
+	if strings.HasPrefix(name, "sthree-") {
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name cannot start with 'sthree-' prefix",
+			Suggestion: "genesys-" + name,
+		}
+	}
+
+	// Check for reserved suffixes
+	if strings.HasSuffix(name, "-s3alias") || strings.HasSuffix(name, "--ol-s3") {
+		return &S3BucketNameError{
+			BucketName: name,
+			Reason:     "bucket name cannot end with reserved suffixes like '-s3alias' or '--ol-s3'",
+			Suggestion: strings.TrimSuffix(strings.TrimSuffix(name, "-s3alias"), "--ol-s3") + "-bucket",
+		}
+	}
+
+	return nil
+}
