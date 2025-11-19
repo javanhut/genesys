@@ -4,12 +4,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/javanhut/genesys/cmd/genesys/commands"
+	"github.com/javanhut/genesys/commands/interact"
+	"github.com/javanhut/genesys/commands/discover"
+	"github.com/javanhut/genesys/commands/execute"
+	"github.com/javanhut/genesys/commands/config"
+	"github.com/javanhut/genesys/commands/state"
+	"github.com/javanhut/genesys/commands/version"
+	"github.com/javanhut/genesys/commands/cache"
+
 	"github.com/spf13/cobra"
 )
 
 var (
-	version = "0.1.0"
+	Version = "0.1.0"
 	commit  = "dev"
 )
 
@@ -33,17 +40,17 @@ Get started:
   2. Create resources:    genesys interact
   3. Deploy safely:       genesys execute config.toml --dry-run
   4. Deploy for real:     genesys execute config.toml`,
-		Version: fmt.Sprintf("%s (%s)", version, commit),
+		Version: fmt.Sprintf("%s (%s)", Version, commit),
 	}
 
 	// Add commands
-	rootCmd.AddCommand(commands.NewExecuteCommand())
-	rootCmd.AddCommand(commands.NewInteractCommand())
-	rootCmd.AddCommand(commands.NewDiscoverCommand())
-	rootCmd.AddCommand(commands.NewConfigCommand())
-	rootCmd.AddCommand(commands.NewCacheCommand())
-	rootCmd.AddCommand(commands.NewStateCommand())
-	rootCmd.AddCommand(commands.NewVersionCommand(version, commit))
+	rootCmd.AddCommand(execute.NewExecuteCommand())
+	rootCmd.AddCommand(interact.NewInteractCommand())
+	rootCmd.AddCommand(discover.NewDiscoverCommand())
+	rootCmd.AddCommand(config.NewConfigCommand())
+	rootCmd.AddCommand(cache.NewCacheCommand())
+	rootCmd.AddCommand(state.NewStateCommand())
+	rootCmd.AddCommand(version.NewVersionCommand(Version, commit))
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
