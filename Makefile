@@ -19,15 +19,15 @@ all: build
 
 # Fast build for development (default - no optimizations)
 build:
-	go build -o genesys ./cmd/genesys
+	go build -o genesys .
 
 # Standard build with optimizations
 build-opt:
-	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -trimpath -o genesys ./cmd/genesys
+	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -trimpath -o genesys .
 
 # Production build with maximum optimizations
 build-prod:
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="$(LDFLAGS) -extldflags '-static'" -trimpath -o genesys ./cmd/genesys
+	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="$(LDFLAGS) -extldflags '-static'" -trimpath -o genesys .
 
 # Clean up binaries
 clean:
@@ -112,4 +112,4 @@ test:
 
 # Run with race detection
 race:
-	go build -race -o genesys ./cmd/genesys
+	go build -race -o genesys .
