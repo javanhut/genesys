@@ -104,6 +104,11 @@ func (iec *InteractiveEC2Config) CreateInstanceConfig() (*EC2InstanceConfig, str
 	}
 	config.Region = region
 
+	// Now validate the name is unique in this region
+	if err := iec.validateUniqueNameInRegion(instanceName, region); err != nil {
+		return nil, "", fmt.Errorf("instance name validation failed: %w", err)
+	}
+
 	// Get instance configuration
 	instanceConfig, err := iec.getInstanceConfiguration(instanceName, region)
 	if err != nil {
@@ -164,12 +169,8 @@ func (iec *InteractiveEC2Config) getInstanceName() (string, error) {
 		}
 	}
 
-	// Check for existing instances with the same name
-	if err := iec.validateUniqueName(formattedName); err != nil {
-		fmt.Printf("⚠️  %v\n", err)
-		fmt.Println("Please choose a different name...")
-		return iec.getInstanceName() // Ask again
-	}
+	// Note: We'll check for unique names after we get the region
+	// This avoids asking for region twice during name validation
 
 	return formattedName, nil
 }
@@ -584,8 +585,8 @@ func (iec *InteractiveEC2Config) getTags() (map[string]string, error) {
 	return tags, nil
 }
 
-// validateUniqueName checks if an EC2 instance name is already in use
-func (iec *InteractiveEC2Config) validateUniqueName(name string) error {
+// validateUniqueNameInRegion checks if an EC2 instance name is already in use in the specified region
+func (iec *InteractiveEC2Config) validateUniqueNameInRegion(name string, region string) error {
 	// Basic name validation first
 	if name == "" {
 		return fmt.Errorf("instance name cannot be empty")
@@ -601,7 +602,7 @@ func (iec *InteractiveEC2Config) validateUniqueName(name string) error {
 	}
 
 	// Check AWS for existing instances with the same Name tag
-	if err := iec.checkAWSInstances(name); err != nil {
+	if err := iec.checkAWSInstancesInRegion(name, region); err != nil {
 		return err
 	}
 
@@ -626,15 +627,8 @@ func (iec *InteractiveEC2Config) checkLocalState(name string) error {
 	return nil
 }
 
-// checkAWSInstances checks if name exists in AWS (running or stopped instances)
-func (iec *InteractiveEC2Config) checkAWSInstances(name string) error {
-	// Get region first
-	region, err := iec.getRegion()
-	if err != nil {
-		// If we can't determine region, allow the name but don't block
-		return nil
-	}
-
+// checkAWSInstancesInRegion checks if name exists in AWS in the specified region (running or stopped instances)
+func (iec *InteractiveEC2Config) checkAWSInstancesInRegion(name string, region string) error {
 	// Create AWS provider to check existing instances
 	provider, err := aws.NewAWSProvider(region)
 	if err != nil {

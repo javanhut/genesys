@@ -2,6 +2,7 @@ package intent
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -334,9 +335,18 @@ func (i *Intent) ToHumanReadable() string {
 		parts = append(parts, fmt.Sprintf("named '%s'", i.Name))
 	}
 
-	// Add key parameters
+	// Add key parameters (sorted for consistent output)
 	var params []string
-	for key, value := range i.Parameters {
+	var keys []string
+	for key := range i.Parameters {
+		keys = append(keys, key)
+	}
+
+	// Sort keys for consistent ordering
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		value := i.Parameters[key]
 		if value != "true" && value != "" {
 			params = append(params, fmt.Sprintf("%s=%s", key, value))
 		} else if value == "true" {

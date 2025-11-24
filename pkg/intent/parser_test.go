@@ -17,9 +17,9 @@ func TestParser_Parse(t *testing.T) {
 			name: "bucket with name",
 			args: []string{"bucket", "my-bucket"},
 			expected: Intent{
-				Type:       IntentBucket,
-				Name:       "my-bucket",
-				Action:     ActionCreate,
+				Type:   IntentBucket,
+				Name:   "my-bucket",
+				Action: ActionCreate,
 				Parameters: map[string]string{
 					"versioning": "true",
 					"encryption": "true",
@@ -105,8 +105,8 @@ func TestParser_Parse(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "invalid bucket name",
-			args: []string{"bucket", "INVALID_NAME"},
+			name:    "invalid bucket name",
+			args:    []string{"bucket", "INVALID_NAME"},
 			wantErr: true,
 		},
 	}
@@ -181,7 +181,7 @@ func TestIntent_ToHumanReadable(t *testing.T) {
 					"memory":  "512",
 				},
 			},
-			expected: "Create function named 'api-handler' with runtime=python3.11, memory=512",
+			expected: "Create function named 'api-handler' with memory=512, runtime=python3.11", // Sorted alphabetically
 		},
 	}
 

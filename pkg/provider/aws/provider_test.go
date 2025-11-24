@@ -94,7 +94,7 @@ func TestInstanceTypeMapping(t *testing.T) {
 		{"medium", "t3.medium"},
 		{"large", "t3.large"},
 		{"xlarge", "t3.xlarge"},
-		{"unknown", "t3.medium"},
+		{"unknown", "t3.micro"}, // Default to Free Tier
 	}
 
 	for _, tt := range tests {
