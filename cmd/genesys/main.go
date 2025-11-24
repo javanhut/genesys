@@ -6,6 +6,9 @@ import (
 
 	"github.com/javanhut/genesys/cmd/genesys/commands"
 	"github.com/spf13/cobra"
+
+	// Import AWS provider to register it
+	_ "github.com/javanhut/genesys/pkg/provider/aws"
 )
 
 var (
@@ -42,6 +45,9 @@ Get started:
 	rootCmd.AddCommand(commands.NewDiscoverCommand())
 	rootCmd.AddCommand(commands.NewConfigCommand())
 	rootCmd.AddCommand(commands.NewVersionCommand(version, commit))
+	rootCmd.AddCommand(commands.NewMonitorCommand())
+	rootCmd.AddCommand(commands.NewManageCommand())
+	rootCmd.AddCommand(commands.NewInspectCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -268,6 +268,46 @@ genesys list resources --service storage      # Filter by service type
 genesys list resources --output json          # JSON output format
 ```
 
+### Resource Monitoring (NEW!)
+```bash
+# Monitor all resources
+genesys monitor resources
+genesys monitor resources --watch   # Live monitoring with refresh
+
+# Monitor specific resources
+genesys monitor ec2 i-1234567890abcdef0 --period 24h
+genesys monitor s3 my-bucket
+genesys monitor lambda my-function --logs
+genesys monitor lambda my-function --tail  # Stream logs in real-time
+```
+
+### Resource Management (NEW!)
+```bash
+# S3 File Operations (like scp for S3)
+genesys manage s3 my-bucket ls              # List objects
+genesys manage s3 my-bucket ls /path/       # List with prefix
+genesys manage s3 my-bucket get file.txt ./local.txt
+genesys manage s3 my-bucket put ./local.txt remote.txt
+genesys manage s3 my-bucket rm old-file.txt
+genesys manage s3 my-bucket sync ./backups/ /backups/2024-11/
+
+# EC2 Management
+genesys manage ec2 i-1234567890abcdef0 describe
+
+# Lambda Management
+genesys manage lambda my-function logs
+genesys manage lambda my-function invoke '{"key":"value"}'
+```
+
+### Resource Inspection (NEW!)
+```bash
+# Deep resource inspection
+genesys inspect ec2 i-1234567890abcdef0
+genesys inspect s3 my-bucket --analyze
+genesys inspect lambda my-function
+genesys inspect s3 my-bucket --output json
+```
+
 ### Help and Information
 ```bash
 genesys --help                      # Show all available commands
@@ -532,6 +572,94 @@ genesys execute staging-*.yaml --dry-run
 genesys execute staging-*.yaml
 genesys execute prod-*.yaml --dry-run
 genesys execute prod-*.yaml
+```
+
+## Monitoring and Management (No AWS CLI Required!)
+
+Genesys now includes powerful monitoring and management capabilities without requiring AWS CLI installation.
+
+### Real-Time Resource Monitoring
+
+Monitor your resources with CloudWatch metrics integration:
+
+```bash
+# Monitor all resources with live updates
+genesys monitor resources --watch
+
+# Output:
+# === Resource Monitor === 10:35:42
+# ✓ i-123: CPU 45.2%
+# ✓ i-456: CPU 23.1%
+# ✓ my-bucket: 45.6 GB, 1,234 objects
+# ✓ my-function: 1,234 invocations/day
+```
+
+### S3 File Management
+
+Upload, download, and sync files without AWS CLI:
+
+```bash
+# List objects
+$ genesys manage s3 my-bucket ls
+PREFIX    data/
+PREFIX    logs/
+FILE      config.json          1.2 KB    2024-11-20 10:30:00
+
+# Download files
+$ genesys manage s3 my-bucket get data/file.txt ./local-file.txt
+Downloading: s3://my-bucket/data/file.txt → ./local-file.txt
+✓ Download complete: 5.2 MB (2.3 MB/s)
+
+# Upload files
+$ genesys manage s3 my-bucket put ./report.pdf reports/2024-11.pdf
+Uploading: ./report.pdf → s3://my-bucket/reports/2024-11.pdf
+✓ Upload complete: 5.2 MB (1.8 MB/s)
+
+# Sync entire directories
+$ genesys manage s3 my-bucket sync ./backups/ /backups/2024-11-24/
+Syncing ./backups/ ↔ s3://my-bucket/backups/2024-11-24/ (direction: upload)
+Found 15 local files to sync
+✓ Sync complete
+```
+
+### Lambda Log Streaming
+
+View Lambda logs in real-time:
+
+```bash
+# View recent logs
+$ genesys manage lambda my-function logs
+[10:30:15] START RequestId: abc123-def456
+[10:30:15] INFO: Processing request for user: user@example.com
+[10:30:16] END RequestId: abc123-def456
+[10:30:16] REPORT Duration: 145.23 ms  Memory: 128/512 MB
+
+# Tail logs in real-time
+$ genesys monitor lambda my-function --tail
+Tailing logs for Lambda function: my-function
+[10:30:15] START RequestId: abc123-def456
+[10:30:15] INFO: Processing request...
+```
+
+### Deep Resource Inspection
+
+Inspect resources without switching tools:
+
+```bash
+$ genesys inspect ec2 i-1234567890abcdef0
+Instance ID:   i-1234567890abcdef0
+Name:          web-server-prod
+Type:          t3.medium
+State:         running
+Private IP:    10.0.1.15
+Recent CPU Usage: 45.2%
+
+$ genesys inspect s3 my-bucket --analyze
+Bucket Analysis:
+  Total Objects: 1,234
+  Total Size:    45.6 GB
+  Versioning:    Enabled
+  Encryption:    AES256
 ```
 
 ## Advanced Usage

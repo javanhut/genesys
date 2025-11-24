@@ -7,6 +7,17 @@ import (
 	"github.com/javanhut/genesys/pkg/provider"
 )
 
+func init() {
+	// Register the AWS provider
+	provider.Register("aws", func(config map[string]string) (provider.Provider, error) {
+		region := config["region"]
+		if region == "" {
+			region = "us-east-1"
+		}
+		return NewAWSProvider(region)
+	})
+}
+
 // AWSProvider implements the Provider interface for AWS using direct API calls
 type AWSProvider struct {
 	region     string
@@ -17,6 +28,9 @@ type AWSProvider struct {
 	serverless provider.ServerlessService
 	state      provider.StateBackend
 	iam        *IAMService
+	monitoring provider.MonitoringService
+	inspector  provider.InspectorService
+	logs       provider.LogsService
 }
 
 // NewAWSProvider creates a new AWS provider instance
@@ -43,6 +57,9 @@ func NewAWSProvider(region string) (*AWSProvider, error) {
 	awsProvider.serverless = NewServerlessService(awsProvider)
 	awsProvider.state = NewStateBackend(awsProvider)
 	awsProvider.iam = NewIAMService(awsProvider)
+	awsProvider.monitoring = NewMonitoringService(awsProvider)
+	awsProvider.inspector = NewInspectorService(awsProvider)
+	awsProvider.logs = NewLogsService(awsProvider)
 
 	return awsProvider, nil
 }
@@ -130,6 +147,21 @@ func (p *AWSProvider) CreateClient(service string) (*AWSClient, error) {
 // IAM returns the IAM service
 func (p *AWSProvider) IAM() *IAMService {
 	return p.iam
+}
+
+// Monitoring returns the monitoring service
+func (p *AWSProvider) Monitoring() provider.MonitoringService {
+	return p.monitoring
+}
+
+// Inspector returns the inspector service
+func (p *AWSProvider) Inspector() provider.InspectorService {
+	return p.inspector
+}
+
+// Logs returns the logs service
+func (p *AWSProvider) Logs() provider.LogsService {
+	return p.logs
 }
 
 // Init initializes the AWS provider factory
