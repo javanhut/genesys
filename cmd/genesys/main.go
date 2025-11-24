@@ -48,6 +48,7 @@ Get started:
 	rootCmd.AddCommand(commands.NewMonitorCommand())
 	rootCmd.AddCommand(commands.NewManageCommand())
 	rootCmd.AddCommand(commands.NewInspectCommand())
+	rootCmd.AddCommand(commands.NewTUICommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

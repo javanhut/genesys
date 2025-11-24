@@ -228,6 +228,26 @@ Success! Your Lambda is deployed with a public HTTPS URL you can test immediatel
 - **Configuration Files**: Generated TOML/YAML for version control
 - **Direct API Integration**: Fast performance without heavy SDKs
 
+### Interactive Terminal UI (New!)
+- **TUI Dashboard**: Browse resources in an interactive terminal interface
+- **Keyboard Navigation**: Fast, mouse-free resource management
+- **S3 Browser**: Navigate buckets and files like a file manager
+- **Resource Lists**: View EC2, S3, Lambda resources in real-time
+- **No AWS CLI Required**: Direct API integration for all operations
+
+```bash
+# Launch interactive TUI
+genesys tui
+
+# Browse S3 bucket in TUI
+genesys manage s3 my-bucket --tui
+
+# Monitor resources in TUI
+genesys monitor --tui
+```
+
+See [TUI Documentation](docs/tui.md) for complete guide.
+
 ## Complete Command Reference
 
 ### Interactive Workflows
