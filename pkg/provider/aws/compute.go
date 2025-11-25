@@ -5,10 +5,27 @@ import (
 	"encoding/xml"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/javanhut/genesys/pkg/provider"
 )
+
+// AllAWSRegions contains all standard AWS regions for EC2 discovery
+var AllAWSRegions = []string{
+	"us-east-1", "us-east-2", "us-west-1", "us-west-2",
+	"af-south-1",
+	"ap-east-1", "ap-south-1", "ap-south-2",
+	"ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
+	"ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-southeast-4",
+	"ca-central-1",
+	"eu-central-1", "eu-central-2",
+	"eu-west-1", "eu-west-2", "eu-west-3",
+	"eu-north-1", "eu-south-1", "eu-south-2",
+	"il-central-1",
+	"me-south-1", "me-central-1",
+	"sa-east-1",
+}
 
 // ComputeService implements AWS EC2 operations using direct API calls
 type ComputeService struct {
@@ -47,20 +64,24 @@ type DescribeInstancesResponse struct {
 		Items []struct {
 			Instances struct {
 				Items []EC2Instance `xml:"item"`
-			} `xml:"instances"`
+			} `xml:"instancesSet"`
 		} `xml:"item"`
 	} `xml:"reservationSet"`
 }
 
 type EC2Instance struct {
-	InstanceId   string `xml:"instanceId"`
-	InstanceType string `xml:"instanceType"`
-	State        struct {
-		Name string `xml:"name"`
-	} `xml:"state"`
+	InstanceId       string `xml:"instanceId"`
+	InstanceType     string `xml:"instanceType"`
+	ImageId          string `xml:"imageId"`
+	KeyName          string `xml:"keyName"`
+	Platform         string `xml:"platform"`
 	PrivateIpAddress string `xml:"privateIpAddress"`
-	LaunchTime       string `xml:"launchTime"`
-	Tags             struct {
+	PublicIpAddress  string `xml:"ipAddress"`
+	State            struct {
+		Name string `xml:"name"`
+	} `xml:"instanceState"`
+	LaunchTime string `xml:"launchTime"`
+	Tags       struct {
 		Items []struct {
 			Key   string `xml:"key"`
 			Value string `xml:"value"`
@@ -87,7 +108,7 @@ func parseEC2Error(responseBody []byte) string {
 		// If we can't parse the XML, return the raw response
 		return string(responseBody)
 	}
-	
+
 	// Return a clean, user-friendly error message
 	if len(ec2Err.Errors.Error) > 0 {
 		firstError := ec2Err.Errors.Error[0]
@@ -98,7 +119,7 @@ func parseEC2Error(responseBody []byte) string {
 			return firstError.Message
 		}
 	}
-	
+
 	// Last resort fallback
 	return string(responseBody)
 }
@@ -131,7 +152,7 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 
 	// Map instance types
 	instanceType := c.mapInstanceType(string(config.Type))
-	
+
 	// Initialize AMI resolver
 	if err := c.initAMIResolver(); err != nil {
 		return nil, fmt.Errorf("failed to initialize AMI resolver: %w", err)
@@ -156,7 +177,7 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 	// Add tags (always include Name tag, so we always have at least one tag)
 	params[fmt.Sprintf("TagSpecification.1.ResourceType")] = "instance"
 	tagIndex := 1
-	
+
 	// Add user-defined tags
 	for key, value := range config.Tags {
 		params[fmt.Sprintf("TagSpecification.1.Tag.%d.Key", tagIndex)] = key
@@ -213,8 +234,8 @@ func (c *ComputeService) GetInstance(ctx context.Context, id string) (*provider.
 	}
 
 	params := map[string]string{
-		"Action":      "DescribeInstances",
-		"Version":     "2016-11-15",
+		"Action":       "DescribeInstances",
+		"Version":      "2016-11-15",
 		"InstanceId.1": id,
 	}
 
@@ -295,8 +316,8 @@ func (c *ComputeService) DeleteInstance(ctx context.Context, id string) error {
 	}
 
 	params := map[string]string{
-		"Action":      "TerminateInstances",
-		"Version":     "2016-11-15",
+		"Action":       "TerminateInstances",
+		"Version":      "2016-11-15",
 		"InstanceId.1": id,
 	}
 
@@ -367,11 +388,152 @@ func (c *ComputeService) ListInstances(ctx context.Context, filters map[string]s
 	return instances, nil
 }
 
-// DiscoverInstances discovers existing instances
+// DiscoverInstances discovers existing instances across all AWS regions
 func (c *ComputeService) DiscoverInstances(ctx context.Context) ([]*provider.Instance, error) {
-	return c.ListInstances(ctx, map[string]string{
-		"instance-state-name": "running",
-	})
+	return c.DiscoverInstancesAllRegions(ctx)
+}
+
+// DiscoverInstancesAllRegions queries all AWS regions in parallel to find EC2 instances
+func (c *ComputeService) DiscoverInstancesAllRegions(ctx context.Context) ([]*provider.Instance, error) {
+	var allInstances []*provider.Instance
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// Channel to collect errors (we'll log them but continue)
+	errChan := make(chan error, len(AllAWSRegions))
+
+	for _, region := range AllAWSRegions {
+		wg.Add(1)
+		go func(r string) {
+			defer wg.Done()
+
+			instances, err := c.listInstancesInRegion(ctx, r)
+			if err != nil {
+				// Send error to channel but don't fail entire operation
+				errChan <- fmt.Errorf("region %s: %w", r, err)
+				return
+			}
+
+			if len(instances) > 0 {
+				mu.Lock()
+				allInstances = append(allInstances, instances...)
+				mu.Unlock()
+			}
+		}(region)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Drain error channel (errors are logged but don't fail the operation)
+	// This allows discovery to succeed even if some regions are not enabled
+	for range errChan {
+		// Silently ignore region errors (e.g., region not enabled for account)
+	}
+
+	return allInstances, nil
+}
+
+// listInstancesInRegion lists instances in a specific region
+func (c *ComputeService) listInstancesInRegion(ctx context.Context, region string) ([]*provider.Instance, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "DescribeInstances",
+		"Version": "2016-11-15",
+	}
+
+	// Filter out terminated instances
+	params["Filter.1.Name"] = "instance-state-name"
+	params["Filter.1.Value.1"] = "pending"
+	params["Filter.1.Value.2"] = "running"
+	params["Filter.1.Value.3"] = "stopping"
+	params["Filter.1.Value.4"] = "stopped"
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe instances: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		// Check for AuthFailure which indicates region is not enabled
+		if strings.Contains(string(body), "AuthFailure") || strings.Contains(string(body), "OptInRequired") {
+			// Region not enabled for this account, return empty list
+			return nil, nil
+		}
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeInstances failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var descResp DescribeInstancesResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	var instances []*provider.Instance
+	for _, reservation := range descResp.Reservations.Items {
+		for _, instance := range reservation.Instances.Items {
+			inst := c.convertToProviderInstanceWithRegion(instance, region)
+			instances = append(instances, inst)
+		}
+	}
+
+	return instances, nil
+}
+
+// convertToProviderInstanceWithRegion converts EC2 instance to provider instance with region info
+func (c *ComputeService) convertToProviderInstanceWithRegion(ec2Instance EC2Instance, region string) *provider.Instance {
+	tags := make(map[string]string)
+	var name string
+
+	for _, tag := range ec2Instance.Tags.Items {
+		tags[tag.Key] = tag.Value
+		if tag.Key == "Name" {
+			name = tag.Value
+		}
+	}
+
+	createdAt := time.Now()
+	if ec2Instance.LaunchTime != "" {
+		if t, err := time.Parse(time.RFC3339, ec2Instance.LaunchTime); err == nil {
+			createdAt = t
+		}
+	}
+
+	// Build ProviderData with SSH-relevant information and region
+	providerData := make(map[string]interface{})
+	providerData["Region"] = region
+	if ec2Instance.KeyName != "" {
+		providerData["KeyName"] = ec2Instance.KeyName
+	}
+	if ec2Instance.ImageId != "" {
+		providerData["ImageId"] = ec2Instance.ImageId
+	}
+	if ec2Instance.Platform != "" {
+		providerData["Platform"] = ec2Instance.Platform
+	}
+
+	return &provider.Instance{
+		ID:           ec2Instance.InstanceId,
+		Name:         name,
+		Type:         provider.InstanceType(c.reverseMapInstanceType(ec2Instance.InstanceType)),
+		State:        ec2Instance.State.Name,
+		PrivateIP:    ec2Instance.PrivateIpAddress,
+		PublicIP:     ec2Instance.PublicIpAddress,
+		Tags:         tags,
+		CreatedAt:    createdAt,
+		ProviderData: providerData,
+	}
 }
 
 // AdoptInstance adopts an existing instance into management
@@ -428,7 +590,7 @@ func (c *ComputeService) getAMIForImage(client *AWSClient, image string) (string
 func (c *ComputeService) convertToProviderInstance(ec2Instance EC2Instance) *provider.Instance {
 	tags := make(map[string]string)
 	var name string
-	
+
 	for _, tag := range ec2Instance.Tags.Items {
 		tags[tag.Key] = tag.Value
 		if tag.Key == "Name" {
@@ -443,14 +605,28 @@ func (c *ComputeService) convertToProviderInstance(ec2Instance EC2Instance) *pro
 		}
 	}
 
+	// Build ProviderData with SSH-relevant information
+	providerData := make(map[string]interface{})
+	if ec2Instance.KeyName != "" {
+		providerData["KeyName"] = ec2Instance.KeyName
+	}
+	if ec2Instance.ImageId != "" {
+		providerData["ImageId"] = ec2Instance.ImageId
+	}
+	if ec2Instance.Platform != "" {
+		providerData["Platform"] = ec2Instance.Platform
+	}
+
 	return &provider.Instance{
-		ID:        ec2Instance.InstanceId,
-		Name:      name,
-		Type:      provider.InstanceType(c.reverseMapInstanceType(ec2Instance.InstanceType)),
-		State:     ec2Instance.State.Name,
-		PrivateIP: ec2Instance.PrivateIpAddress,
-		Tags:      tags,
-		CreatedAt: createdAt,
+		ID:           ec2Instance.InstanceId,
+		Name:         name,
+		Type:         provider.InstanceType(c.reverseMapInstanceType(ec2Instance.InstanceType)),
+		State:        ec2Instance.State.Name,
+		PrivateIP:    ec2Instance.PrivateIpAddress,
+		PublicIP:     ec2Instance.PublicIpAddress,
+		Tags:         tags,
+		CreatedAt:    createdAt,
+		ProviderData: providerData,
 	}
 }
 

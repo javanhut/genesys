@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/javanhut/genesys/pkg/provider"
 	"github.com/javanhut/genesys/pkg/tui"
 	"github.com/javanhut/genesys/pkg/tui/widgets"
 	"github.com/rivo/tview"
@@ -12,8 +13,9 @@ import (
 // EC2ListView shows a list of EC2 instances
 type EC2ListView struct {
 	*tview.Flex
-	appCtx *tui.AppContext
-	table  *tview.Table
+	appCtx    *tui.AppContext
+	table     *tview.Table
+	instances []*provider.Instance // Store instances for reference
 }
 
 // NewEC2ListView creates a new EC2 list view
@@ -46,7 +48,7 @@ func (ev *EC2ListView) setupTable() {
 		Foreground(tcell.ColorWhite))
 
 	// Add headers
-	headers := []string{"Instance ID", "Name", "State", "Type", "IP Address"}
+	headers := []string{"Instance ID", "Name", "Region", "State", "Type", "IP Address"}
 	for i, header := range headers {
 		cell := tview.NewTableCell(header).
 			SetTextColor(tcell.ColorYellow).
@@ -76,6 +78,14 @@ func (ev *EC2ListView) setupTable() {
 					// TODO: Navigate to metrics view
 				}
 				return nil
+			case 'c':
+				// SSH Connect
+				row, _ := ev.table.GetSelection()
+				if row > 0 && row-1 < len(ev.instances) {
+					instance := ev.instances[row-1]
+					tui.ShowSSHDialog(ev.appCtx, instance)
+				}
+				return nil
 			}
 		}
 		return event
@@ -88,8 +98,11 @@ func (ev *EC2ListView) loadInstances() {
 		ev.table.RemoveRow(i)
 	}
 
-	// Show loading
-	ev.table.SetCell(1, 0, tview.NewTableCell("Loading instances...").
+	// Clear stored instances
+	ev.instances = nil
+
+	// Show loading message - scanning all regions takes time
+	ev.table.SetCell(1, 0, tview.NewTableCell("Scanning all AWS regions for instances...").
 		SetTextColor(tcell.ColorGray))
 
 	// Load instances asynchronously
@@ -112,6 +125,9 @@ func (ev *EC2ListView) loadInstances() {
 				return
 			}
 
+			// Store instances for reference (used by SSH connect)
+			ev.instances = instances
+
 			// Add instance rows
 			for i, instance := range instances {
 				row := i + 1
@@ -121,11 +137,29 @@ func (ev *EC2ListView) loadInstances() {
 					stateColor = tcell.ColorRed
 				}
 
+				// Get region from ProviderData
+				region := ""
+				if instance.ProviderData != nil {
+					if r, ok := instance.ProviderData["Region"].(string); ok {
+						region = r
+					}
+				}
+
+				// Display public IP if available, otherwise private IP
+				displayIP := instance.PublicIP
+				if displayIP == "" {
+					displayIP = instance.PrivateIP
+					if displayIP != "" {
+						displayIP = displayIP + " (private)"
+					}
+				}
+
 				ev.table.SetCell(row, 0, tview.NewTableCell(instance.ID).SetTextColor(tcell.ColorWhite))
 				ev.table.SetCell(row, 1, tview.NewTableCell(instance.Name).SetTextColor(tcell.ColorBlue))
-				ev.table.SetCell(row, 2, tview.NewTableCell(instance.State).SetTextColor(stateColor))
-				ev.table.SetCell(row, 3, tview.NewTableCell(string(instance.Type)).SetTextColor(tcell.ColorWhite))
-				ev.table.SetCell(row, 4, tview.NewTableCell(instance.PublicIP).SetTextColor(tcell.ColorWhite))
+				ev.table.SetCell(row, 2, tview.NewTableCell(region).SetTextColor(tcell.ColorYellow))
+				ev.table.SetCell(row, 3, tview.NewTableCell(instance.State).SetTextColor(stateColor))
+				ev.table.SetCell(row, 4, tview.NewTableCell(string(instance.Type)).SetTextColor(tcell.ColorWhite))
+				ev.table.SetCell(row, 5, tview.NewTableCell(displayIP).SetTextColor(tcell.ColorWhite))
 			}
 		})
 	}()
@@ -135,6 +169,7 @@ func (ev *EC2ListView) loadInstances() {
 func (ev *EC2ListView) GetFooter() *widgets.Footer {
 	return widgets.NewFooter([]widgets.Shortcut{
 		{Key: "↑↓", Description: "Navigate"},
+		{Key: "c", Description: "SSH Connect"},
 		{Key: "m", Description: "Metrics"},
 		{Key: "r", Description: "Refresh"},
 		{Key: "ESC", Description: "Back"},

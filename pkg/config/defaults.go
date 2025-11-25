@@ -38,26 +38,21 @@ func ApplyDefaults(config *Config) {
 func applyComputeDefaults(config *Config) {
 	for i := range config.Resources.Compute {
 		compute := &config.Resources.Compute[i]
-		
+
 		if compute.Count == 0 {
 			compute.Count = 1
 		}
-		
+
 		if compute.Type == "" {
 			compute.Type = "small"
 		}
-		
+
 		if compute.Image == "" {
 			compute.Image = "ubuntu-lts"
 		}
 
 		if compute.Tags == nil {
 			compute.Tags = make(map[string]string)
-		}
-		
-		// Set default tags if not present
-		if _, exists := compute.Tags["ManagedBy"]; !exists {
-			compute.Tags["ManagedBy"] = "Genesys"
 		}
 	}
 }
@@ -66,7 +61,7 @@ func applyComputeDefaults(config *Config) {
 func applyStorageDefaults(config *Config) {
 	for i := range config.Resources.Storage {
 		storage := &config.Resources.Storage[i]
-		
+
 		if storage.Type == "" {
 			storage.Type = "bucket"
 		}
@@ -75,18 +70,13 @@ func applyStorageDefaults(config *Config) {
 		if !storage.Versioning && storage.Type == "bucket" {
 			storage.Versioning = true
 		}
-		
+
 		if !storage.Encryption {
 			storage.Encryption = true
 		}
 
 		if storage.Tags == nil {
 			storage.Tags = make(map[string]string)
-		}
-		
-		// Set default tags
-		if _, exists := storage.Tags["ManagedBy"]; !exists {
-			storage.Tags["ManagedBy"] = "Genesys"
 		}
 	}
 }
@@ -95,11 +85,11 @@ func applyStorageDefaults(config *Config) {
 func applyDatabaseDefaults(config *Config) {
 	for i := range config.Resources.Database {
 		database := &config.Resources.Database[i]
-		
+
 		if database.Engine == "" {
 			database.Engine = "postgres"
 		}
-		
+
 		if database.Version == "" {
 			switch database.Engine {
 			case "postgres":
@@ -112,11 +102,11 @@ func applyDatabaseDefaults(config *Config) {
 				database.Version = "latest"
 			}
 		}
-		
+
 		if database.Size == "" {
 			database.Size = "small"
 		}
-		
+
 		if database.Storage == 0 {
 			database.Storage = 20
 		}
@@ -132,11 +122,6 @@ func applyDatabaseDefaults(config *Config) {
 		if database.Tags == nil {
 			database.Tags = make(map[string]string)
 		}
-		
-		// Set default tags
-		if _, exists := database.Tags["ManagedBy"]; !exists {
-			database.Tags["ManagedBy"] = "Genesys"
-		}
 	}
 }
 
@@ -144,19 +129,19 @@ func applyDatabaseDefaults(config *Config) {
 func applyServerlessDefaults(config *Config) {
 	for i := range config.Resources.Serverless {
 		serverless := &config.Resources.Serverless[i]
-		
+
 		if serverless.Runtime == "" {
 			serverless.Runtime = "python3.11"
 		}
-		
+
 		if serverless.Handler == "" {
 			serverless.Handler = "main.handler"
 		}
-		
+
 		if serverless.Memory == 0 {
 			serverless.Memory = 256
 		}
-		
+
 		if serverless.Timeout == 0 {
 			serverless.Timeout = 60
 		}
@@ -167,11 +152,6 @@ func applyServerlessDefaults(config *Config) {
 
 		if serverless.Tags == nil {
 			serverless.Tags = make(map[string]string)
-		}
-		
-		// Set default tags
-		if _, exists := serverless.Tags["ManagedBy"]; !exists {
-			serverless.Tags["ManagedBy"] = "Genesys"
 		}
 	}
 }
@@ -203,13 +183,9 @@ func applyPolicyDefaults(config *Config) {
 	if !config.Policies.NoPublicBuckets {
 		config.Policies.NoPublicBuckets = true
 	}
-	
+
 	if !config.Policies.RequireEncryption {
 		config.Policies.RequireEncryption = true
 	}
 
-	// Default required tags for resource organization
-	if len(config.Policies.RequireTags) == 0 {
-		config.Policies.RequireTags = []string{"ManagedBy"}
-	}
 }

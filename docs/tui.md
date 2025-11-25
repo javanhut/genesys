@@ -79,6 +79,7 @@ When viewing resource lists (EC2, S3, Lambda):
 
 **EC2 Specific:**
 - Press `m` to jump directly to metrics
+- Press `c` to SSH connect to instance
 
 **Lambda Specific:**
 - Press `i` to invoke function
@@ -153,18 +154,20 @@ The uploaded file will be placed in the current S3 prefix (folder) shown in the 
 ### EC2 Instances List
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│ EC2 Instances                                              │
-├────────────────────────────────────────────────────────────┤
-│ Instance ID        Name        State    Type      IP      │
-│────────────────────────────────────────────────────────────│
-│ i-1234567890abc   web-server  running  t2.micro  1.2.3.4 │
-│ i-0987654321def   db-server   stopped  t3.small  5.6.7.8 │
-│                                                            │
-├────────────────────────────────────────────────────────────┤
-│ ↑↓: Navigate | m: Metrics | r: Refresh | ESC: Back        │
-└────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│ EC2 Instances                                                             │
+├───────────────────────────────────────────────────────────────────────────┤
+│ Instance ID        Name        Region      State    Type      IP         │
+│───────────────────────────────────────────────────────────────────────────│
+│ i-1234567890abc   web-server  us-east-1   running  t2.micro  1.2.3.4    │
+│ i-0987654321def   db-server   eu-west-1   stopped  t3.small  5.6.7.8    │
+│                                                                           │
+├───────────────────────────────────────────────────────────────────────────┤
+│ ↑↓: Navigate | c: SSH | m: Metrics | r: Refresh | ESC: Back              │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
+
+The EC2 list automatically discovers instances across all AWS regions. This scan runs in parallel for fast results.
 
 ### S3 Browser
 
@@ -257,8 +260,9 @@ cat ~/.genesys/aws.json
 ### EC2 Instance Management
 
 1. **View All Instances**
-   - Lists all EC2 instances in your account
-   - Shows: ID, Name, State, Type, IP Address
+   - Lists all EC2 instances across all AWS regions
+   - Shows: ID, Name, Region, State, Type, IP Address
+   - Scans all regions in parallel for fast discovery
    - Color-coded status (green=running, red=stopped)
 
 2. **Instance Details**
@@ -381,6 +385,7 @@ genesys manage s3 my-production-bucket --tui
 | Key | Action |
 |-----|--------|
 | `Enter` | View instance details |
+| `c` | SSH connect to instance |
 | `m` | View metrics directly |
 | `r` | Refresh instance list |
 
@@ -446,6 +451,24 @@ genesys manage s3 my-production-bucket --tui
 - Error messages display inline
 - No API calls made until you navigate to a screen
 
+## Multi-Region Discovery
+
+EC2 instance discovery automatically scans all AWS regions in parallel to find instances across your entire account. This includes:
+
+**Supported Regions:**
+- US: us-east-1, us-east-2, us-west-1, us-west-2
+- Europe: eu-west-1, eu-west-2, eu-west-3, eu-central-1, eu-central-2, eu-north-1, eu-south-1, eu-south-2
+- Asia Pacific: ap-northeast-1, ap-northeast-2, ap-northeast-3, ap-southeast-1, ap-southeast-2, ap-southeast-3, ap-southeast-4, ap-south-1, ap-south-2, ap-east-1
+- Other: ca-central-1, sa-east-1, af-south-1, me-south-1, me-central-1, il-central-1
+
+**How It Works:**
+1. When you navigate to EC2 Instances, Genesys queries all regions in parallel
+2. Results are aggregated and displayed with the region column
+3. Regions that are not enabled for your account are silently skipped
+4. The scan typically completes in 2-5 seconds
+
+**Note:** Only non-terminated instances (running, stopped, pending, stopping) are shown.
+
 ## Common Workflows
 
 ### Check EC2 Status
@@ -498,3 +521,126 @@ genesys manage s3 my-production-bucket --tui
 4. Press 'm' for metrics
 5. See CPU, Network, Disk stats
 ```
+
+### SSH Connect to EC2 Instance
+```
+1. Launch: genesys tui
+2. Press '2' for EC2
+3. Navigate to a running instance
+4. Press 'c' to connect via SSH
+5. Enter PEM key file path (or use auto-detected)
+6. Confirm username (auto-detected based on AMI)
+7. SSH session opens in terminal
+8. Press Enter after SSH exit to return to TUI
+```
+
+## SSH Connectivity
+
+The TUI provides built-in SSH connectivity to EC2 instances, allowing you to connect directly from the interface without switching to a separate terminal.
+
+### Requirements
+
+- The instance must be in "running" state
+- The instance must have a public or private IP address
+- You need a valid PEM key file for the instance
+- SSH client must be installed on your system
+- Security group must allow SSH access (port 22)
+
+### How It Works
+
+1. **Select Instance**: Navigate to an EC2 instance in the list
+2. **Press 'c'**: Opens the SSH connection dialog
+3. **Configure Connection**:
+   - **Key File**: Path to your .pem file (auto-detected from ~/.ssh/ if possible)
+   - **Username**: Auto-detected based on AMI type (editable)
+   - **Port**: Default 22 (configurable)
+4. **Connect**: TUI suspends and SSH session starts
+5. **Return**: After exiting SSH, press Enter to resume TUI
+
+### Auto-Detection Features
+
+**Key File Detection**:
+- Checks instance's KeyName in ProviderData
+- Looks for matching file in ~/.ssh/
+- Suggests single .pem file if only one exists
+
+**Username Detection**:
+Based on the instance's image, the default username is auto-detected:
+| AMI Type | Default User |
+|----------|--------------|
+| Amazon Linux | ec2-user |
+| Ubuntu | ubuntu |
+| Debian | admin |
+| CentOS | centos |
+| RHEL | ec2-user |
+| Fedora | fedora |
+| SUSE | ec2-user |
+| Bitnami | bitnami |
+| Windows | Administrator |
+
+### SSH Connection Dialog
+
+```
+┌─────────────────────────────────────────────┐
+│  SSH Connect to web-server                  │
+├─────────────────────────────────────────────┤
+│                                             │
+│  Host:     54.123.45.67                     │
+│                                             │
+│  Region:   us-east-1                        │
+│                                             │
+│  Key File: ~/.ssh/my-key.pem                │
+│                                             │
+│  Username: ec2-user                         │
+│                                             │
+│  Port:     22                               │
+│                                             │
+│        [ Connect ]    [ Cancel ]            │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+### Path Expansion
+
+The key file path supports tilde expansion:
+- `~/.ssh/my-key.pem` expands to `/home/user/.ssh/my-key.pem`
+
+### Error Handling
+
+The SSH dialog validates:
+- Instance is running
+- Instance has an IP address
+- Key file exists
+- Username is provided
+- Port is valid (1-65535)
+
+### SSH Options Used
+
+The SSH connection uses these options for reliability:
+- `-o StrictHostKeyChecking=accept-new` - Auto-accept new host keys
+- `-o ServerAliveInterval=60` - Keep connection alive
+
+### Troubleshooting SSH Connections
+
+**"Instance has no IP address"**
+- Instance may be stopped or initializing
+- Check if instance is in a private subnet without NAT
+
+**"Instance is stopped"**
+- Start the instance from AWS Console or CLI
+- Refresh the list with 'r' and try again
+
+**"Key file not found"**
+- Verify the path is correct
+- Check file permissions (should be 400 or 600)
+- Ensure the file is the correct key for this instance
+
+**"Connection refused"**
+- Check security group allows inbound SSH (port 22)
+- Verify the instance's SSH daemon is running
+- Try connecting from the instance's private IP if on VPN
+
+**"Permission denied"**
+- Wrong username for the AMI type
+- Wrong key file for this instance
+- Key file has incorrect permissions (run: chmod 600 key.pem)

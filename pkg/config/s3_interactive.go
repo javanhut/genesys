@@ -269,30 +269,17 @@ func (isc *InteractiveS3Config) getBucketConfiguration(bucketName string) (S3Sto
 func (isc *InteractiveS3Config) getTags() (map[string]string, error) {
 	tags := make(map[string]string)
 
-	// Add default tags
-	defaultTags := map[string]string{
-		"Environment": "development",
-		"ManagedBy":   "Genesys",
-		"Purpose":     "demo",
-	}
-
-	fmt.Println("\nDefault tags will be added:")
-	for key, value := range defaultTags {
-		fmt.Printf("  %s: %s\n", key, value)
-		tags[key] = value
-	}
-
-	// Ask for additional tags
-	var addMore bool
-	moreTagsPrompt := &survey.Confirm{
-		Message: "Add additional custom tags?",
+	// Ask for custom tags
+	var addTags bool
+	tagsPrompt := &survey.Confirm{
+		Message: "Add custom tags?",
 		Default: false,
 	}
-	if err := survey.AskOne(moreTagsPrompt, &addMore); err != nil {
+	if err := survey.AskOne(tagsPrompt, &addTags); err != nil {
 		return tags, err
 	}
 
-	if addMore {
+	if addTags {
 		for {
 			var key, value string
 
