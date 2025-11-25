@@ -91,10 +91,37 @@ When browsing S3 buckets:
 - `Enter` - Open folder / Select file
 - `Backspace` - Navigate to parent folder
 - `d` - Download selected file (shows progress)
+- `u` - Enter upload mode (split-pane file browser)
 - `r` - Refresh current directory
 - `ESC` - Return to bucket list
 
 Files are downloaded to the current directory where you launched the TUI.
+
+### S3 Upload Mode (Split-Pane Browser)
+
+Press `u` in the S3 browser to enter upload mode. This displays a dual-pane view:
+- **Left pane (green border)**: Local filesystem browser
+- **Right pane (blue border)**: S3 bucket browser
+
+**Upload Mode Controls:**
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch focus between local and S3 panes |
+| `Enter` | Navigate into folder (if directory) or upload file (if file in local pane) |
+| `Backspace` | Go to parent directory |
+| `h` | Toggle hidden files (local pane) |
+| `~` | Jump to home directory (local pane) |
+| `r` | Refresh current pane |
+| `ESC` | Exit upload mode, return to S3 browser |
+
+**Uploading Files:**
+1. Navigate the local pane to find your file
+2. Press `Enter` on a file to upload it to the current S3 location
+3. A progress modal shows upload status
+4. The S3 pane refreshes automatically after successful upload
+
+The uploaded file will be placed in the current S3 prefix (folder) shown in the right pane.
 
 ## Screens
 
@@ -177,7 +204,8 @@ genesys config setup
 All core features are now implemented:
 
 - **EC2 Detailed Views**: Full instance information with metrics
-- **S3 File Operations**: Download files with progress tracking
+- **S3 File Operations**: Download and upload files with progress tracking
+- **S3 Upload Mode**: Dual-pane local/S3 file browser for easy uploads
 - **Lambda Invocation**: Invoke functions with custom payloads
 - **Metrics Visualization**: Real-time CloudWatch metrics
 - **Log Viewing**: View recent Lambda logs
@@ -205,20 +233,20 @@ cat ~/.genesys/aws.json
 
 ## Implemented Features
 
-### Phases 1-4 (Complete)
-- ✅ Dashboard with resource navigation
-- ✅ EC2 instances list with status
-- ✅ S3 bucket browser with folder navigation
-- ✅ Lambda functions list
-- ✅ Detailed resource views (EC2, S3, Lambda)
-- ✅ Real-time metrics from CloudWatch
-- ✅ File downloads with progress
-- ✅ Lambda function invocation
-- ✅ Log viewing
+### Phases 1-5 (Complete)
+- Dashboard with resource navigation
+- EC2 instances list with status
+- S3 bucket browser with folder navigation
+- Lambda functions list
+- Detailed resource views (EC2, S3, Lambda)
+- Real-time metrics from CloudWatch
+- File downloads with progress
+- File uploads to S3 with dual-pane browser
+- Lambda function invocation
+- Log viewing
 
-### Future Enhancements (Phase 5-6)
+### Future Enhancements (Phase 6)
 - Live log streaming with auto-scroll
-- File uploads to S3
 - EC2 instance start/stop
 - Custom color themes
 - Resource filtering and search
@@ -368,7 +396,19 @@ genesys manage s3 my-production-bucket --tui
 | `Enter` | Open folder or select file |
 | `Backspace` | Go up to parent folder |
 | `d` | Download selected file |
+| `u` | Enter upload mode (dual-pane browser) |
 | `r` | Refresh current listing |
+
+### S3 Upload Mode
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch between local and S3 panes |
+| `Enter` | Navigate folder / Upload selected file |
+| `Backspace` | Go to parent directory |
+| `h` | Toggle hidden files (local pane) |
+| `~` | Go to home directory (local pane) |
+| `r` | Refresh current pane |
+| `ESC` | Exit upload mode |
 
 ### Lambda List
 | Key | Action |
@@ -390,11 +430,13 @@ genesys manage s3 my-production-bucket --tui
 1. **Fast Navigation**: Use number keys (2, 3, 4) on dashboard for quick access
 2. **Refresh Data**: Press 'r' on any list to reload from AWS
 3. **Downloads**: Downloaded files go to the directory where you launched the TUI
-4. **Lambda Payload**: Default payload is `{}` - customize as needed
-5. **Logs**: Most recent logs appear at the top
-6. **Metrics**: Metrics auto-load when viewing details
-7. **ESC Key**: Always takes you back one level
-8. **Quit Anytime**: Press 'q' from any screen to exit
+4. **Uploads**: Press 'u' in S3 browser to open dual-pane upload mode
+5. **Hidden Files**: Press 'h' in upload mode to toggle hidden file visibility
+6. **Lambda Payload**: Default payload is `{}` - customize as needed
+7. **Logs**: Most recent logs appear at the top
+8. **Metrics**: Metrics auto-load when viewing details
+9. **ESC Key**: Always takes you back one level
+10. **Quit Anytime**: Press 'q' from any screen to exit
 
 ## Performance Notes
 
@@ -422,6 +464,20 @@ genesys manage s3 my-production-bucket --tui
 4. Navigate to file with Enter/Backspace
 5. Press 'd' to download
 6. Check current directory for file
+```
+
+### Upload File to S3
+```
+1. Launch: genesys tui
+2. Press '3' for S3
+3. Press Enter on bucket
+4. Navigate to desired S3 folder (optional)
+5. Press 'u' to enter upload mode
+6. Use Tab to switch between local/S3 panes
+7. Navigate local filesystem to find your file
+8. Press Enter on a file to upload it
+9. Progress modal shows upload status
+10. Press ESC to exit upload mode
 ```
 
 ### Test Lambda Function

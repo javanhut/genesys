@@ -3,6 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -601,7 +604,7 @@ func showS3BrowserWithPrefix(appCtx *AppContext, header, footer *tview.TextView,
 	}
 
 	// Update footer
-	footer.SetText("[yellow]↑↓: Navigate[white] [gray]|[white] [yellow]Enter: Open[white] [gray]|[white] [yellow]Backspace: Up[white] [gray]|[white] [yellow]d: Download[white] [gray]|[white] [yellow]ESC: Back[white]")
+	footer.SetText("[yellow]↑↓: Navigate[white] [gray]|[white] [yellow]Enter: Open[white] [gray]|[white] [yellow]Backspace: Up[white] [gray]|[white] [yellow]d: Download[white] [gray]|[white] [yellow]u: Upload[white] [gray]|[white] [yellow]ESC: Back[white]")
 
 	// Store objects for navigation
 	var objects []*provider.S3ObjectInfo
@@ -650,6 +653,10 @@ func showS3BrowserWithPrefix(appCtx *AppContext, header, footer *tview.TextView,
 				return nil
 			case 'r':
 				loadS3Objects(appCtx, table, bucketName, prefix, &objects)
+				return nil
+			case 'u':
+				// Enter upload mode with split-pane view
+				showS3UploadView(appCtx, header, footer, bucketName, prefix)
 				return nil
 			}
 		}
@@ -786,6 +793,428 @@ func downloadS3File(appCtx *AppContext, bucketName, key string) {
 			}
 		}
 	}()
+}
+
+func showS3UploadView(appCtx *AppContext, header, footer *tview.TextView, bucketName, s3Prefix string) {
+	// State variables
+	var localPath string
+	var showHiddenFiles bool
+	var localEntries []localFileEntry
+	var s3Objects []*provider.S3ObjectInfo
+	focusLocal := true
+
+	// Initialize local path
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd, _ = os.UserHomeDir()
+	}
+	localPath = cwd
+
+	// Create local file browser table (left pane)
+	localTable := tview.NewTable()
+	localTable.SetBorders(false)
+	localTable.SetSelectable(true, false)
+	localTable.SetFixed(1, 0)
+	localTable.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.ColorDarkGreen).
+		Foreground(tcell.ColorWhite))
+
+	// Create S3 browser table (right pane)
+	s3Table := tview.NewTable()
+	s3Table.SetBorders(false)
+	s3Table.SetSelectable(true, false)
+	s3Table.SetFixed(1, 0)
+	s3Table.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.ColorDarkBlue).
+		Foreground(tcell.ColorWhite))
+
+	// Create status bar
+	statusBar := tview.NewTextView()
+	statusBar.SetDynamicColors(true)
+	statusBar.SetTextAlign(tview.AlignCenter)
+
+	// Create pane containers
+	localPane := tview.NewFlex()
+	localPane.SetDirection(tview.FlexRow)
+	localPane.SetBorder(true)
+	localPane.SetBorderColor(tcell.ColorGreen)
+	localPane.AddItem(localTable, 0, 1, true)
+
+	s3Pane := tview.NewFlex()
+	s3Pane.SetDirection(tview.FlexRow)
+	s3Pane.SetBorder(true)
+	s3Pane.SetBorderColor(tcell.ColorGray)
+	s3Pane.AddItem(s3Table, 0, 1, false)
+
+	// Helper functions
+	updateLocalTitle := func() {
+		path := localPath
+		if len(path) > 25 {
+			path = "..." + path[len(path)-22:]
+		}
+		localPane.SetTitle(fmt.Sprintf(" Local: %s ", path))
+	}
+
+	updateS3Title := func() {
+		title := fmt.Sprintf(" S3: %s", bucketName)
+		if s3Prefix != "" {
+			p := s3Prefix
+			if len(p) > 15 {
+				p = "..." + p[len(p)-12:]
+			}
+			title += "/" + strings.TrimSuffix(p, "/")
+		}
+		title += " "
+		s3Pane.SetTitle(title)
+	}
+
+	updateStatusBar := func() {
+		var focusIndicator string
+		if focusLocal {
+			focusIndicator = "[green]LOCAL[white]"
+		} else {
+			focusIndicator = "[blue]S3[white]"
+		}
+		statusBar.SetText(fmt.Sprintf("Focus: %s | [yellow]Tab[white]: Switch | [yellow]Enter[white]: Navigate/Upload | [yellow]Backspace[white]: Up | [yellow]ESC[white]: Exit", focusIndicator))
+	}
+
+	toggleFocus := func() {
+		focusLocal = !focusLocal
+		updateStatusBar()
+		if focusLocal {
+			appCtx.App.SetFocus(localTable)
+			localPane.SetBorderColor(tcell.ColorGreen)
+			s3Pane.SetBorderColor(tcell.ColorGray)
+		} else {
+			appCtx.App.SetFocus(s3Table)
+			localPane.SetBorderColor(tcell.ColorGray)
+			s3Pane.SetBorderColor(tcell.ColorBlue)
+		}
+	}
+
+	// Load local directory function
+	var loadLocalDir func()
+	loadLocalDir = func() {
+		// Clear existing rows
+		for i := localTable.GetRowCount() - 1; i > 0; i-- {
+			localTable.RemoveRow(i)
+		}
+
+		// Set headers
+		localHeaders := []string{"Name", "Size", "Modified"}
+		for i, h := range localHeaders {
+			cell := tview.NewTableCell(h).
+				SetTextColor(tcell.ColorYellow).
+				SetAlign(tview.AlignLeft).
+				SetSelectable(false).
+				SetAttributes(tcell.AttrBold)
+			localTable.SetCell(0, i, cell)
+		}
+
+		// Read directory
+		dirEntries, err := os.ReadDir(localPath)
+		if err != nil {
+			localTable.SetCell(1, 0, tview.NewTableCell(fmt.Sprintf("Error: %v", err)).
+				SetTextColor(tcell.ColorRed))
+			return
+		}
+
+		localEntries = make([]localFileEntry, 0, len(dirEntries))
+		for _, de := range dirEntries {
+			name := de.Name()
+			if !showHiddenFiles && strings.HasPrefix(name, ".") {
+				continue
+			}
+			info, err := de.Info()
+			if err != nil {
+				continue
+			}
+			localEntries = append(localEntries, localFileEntry{
+				Name:    name,
+				Path:    filepath.Join(localPath, name),
+				IsDir:   de.IsDir(),
+				Size:    info.Size(),
+				ModTime: info.ModTime().Format("2006-01-02 15:04"),
+			})
+		}
+
+		// Sort: directories first
+		sort.Slice(localEntries, func(i, j int) bool {
+			if localEntries[i].IsDir != localEntries[j].IsDir {
+				return localEntries[i].IsDir
+			}
+			return strings.ToLower(localEntries[i].Name) < strings.ToLower(localEntries[j].Name)
+		})
+
+		if len(localEntries) == 0 {
+			localTable.SetCell(1, 0, tview.NewTableCell("(empty)").SetTextColor(tcell.ColorGray))
+			return
+		}
+
+		row := 1
+		for _, entry := range localEntries {
+			var nameCell *tview.TableCell
+			var sizeStr string
+			if entry.IsDir {
+				nameCell = tview.NewTableCell("[DIR] " + entry.Name).SetTextColor(tcell.ColorBlue)
+				sizeStr = "-"
+			} else {
+				nameCell = tview.NewTableCell("      " + entry.Name).SetTextColor(tcell.ColorWhite)
+				sizeStr = formatBytes(entry.Size)
+			}
+			localTable.SetCell(row, 0, nameCell)
+			localTable.SetCell(row, 1, tview.NewTableCell(sizeStr).SetTextColor(tcell.ColorWhite))
+			localTable.SetCell(row, 2, tview.NewTableCell(entry.ModTime).SetTextColor(tcell.ColorGray))
+			row++
+		}
+		localTable.Select(1, 0)
+	}
+
+	// Load S3 objects function
+	var loadS3Dir func()
+	loadS3Dir = func() {
+		// Clear existing rows
+		for i := s3Table.GetRowCount() - 1; i > 0; i-- {
+			s3Table.RemoveRow(i)
+		}
+
+		// Set headers
+		s3Headers := []string{"Name", "Size", "Modified"}
+		for i, h := range s3Headers {
+			cell := tview.NewTableCell(h).
+				SetTextColor(tcell.ColorYellow).
+				SetAlign(tview.AlignLeft).
+				SetSelectable(false).
+				SetAttributes(tcell.AttrBold)
+			s3Table.SetCell(0, i, cell)
+		}
+
+		s3Table.SetCell(1, 0, tview.NewTableCell("Loading...").SetTextColor(tcell.ColorGray))
+
+		go func() {
+			objects, err := appCtx.Provider.Storage().ListObjects(appCtx.Ctx, bucketName, s3Prefix, 1000)
+			appCtx.App.QueueUpdateDraw(func() {
+				s3Table.RemoveRow(1)
+				if err != nil {
+					s3Table.SetCell(1, 0, tview.NewTableCell(fmt.Sprintf("Error: %v", err)).SetTextColor(tcell.ColorRed))
+					return
+				}
+				s3Objects = objects
+				if len(objects) == 0 {
+					s3Table.SetCell(1, 0, tview.NewTableCell("(empty)").SetTextColor(tcell.ColorGray))
+					return
+				}
+				row := 1
+				for _, obj := range objects {
+					if obj.IsPrefix {
+						name := strings.TrimPrefix(obj.Key, s3Prefix)
+						s3Table.SetCell(row, 0, tview.NewTableCell("[DIR] "+name).SetTextColor(tcell.ColorBlue))
+						s3Table.SetCell(row, 1, tview.NewTableCell("-").SetTextColor(tcell.ColorGray))
+						s3Table.SetCell(row, 2, tview.NewTableCell("-").SetTextColor(tcell.ColorGray))
+						row++
+					}
+				}
+				for _, obj := range objects {
+					if !obj.IsPrefix {
+						name := strings.TrimPrefix(obj.Key, s3Prefix)
+						size := formatBytes(obj.Size)
+						modified := obj.LastModified.Format("2006-01-02 15:04")
+						s3Table.SetCell(row, 0, tview.NewTableCell("      "+name).SetTextColor(tcell.ColorWhite))
+						s3Table.SetCell(row, 1, tview.NewTableCell(size).SetTextColor(tcell.ColorWhite))
+						s3Table.SetCell(row, 2, tview.NewTableCell(modified).SetTextColor(tcell.ColorGray))
+						row++
+					}
+				}
+			})
+		}()
+	}
+
+	// Upload file function
+	uploadFile := func(localFilePath string) {
+		fileName := filepath.Base(localFilePath)
+		s3Key := s3Prefix + fileName
+
+		modal := tview.NewModal().
+			SetText(fmt.Sprintf("Uploading %s...", fileName)).
+			AddButtons([]string{"OK"})
+		modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			appCtx.Pages.RemovePage("upload-modal")
+		})
+		appCtx.Pages.AddPage("upload-modal", modal, true, true)
+
+		go func() {
+			progress := make(chan *provider.TransferProgress, 10)
+			done := make(chan error, 1)
+			go func() {
+				done <- appCtx.Provider.Storage().UploadFile(appCtx.Ctx, bucketName, s3Key, localFilePath, progress)
+			}()
+
+			for {
+				select {
+				case p := <-progress:
+					appCtx.App.QueueUpdateDraw(func() {
+						switch p.Status {
+						case "complete":
+							modal.SetText(fmt.Sprintf("Uploaded %s successfully!\n\nDestination: s3://%s/%s", fileName, bucketName, s3Key))
+							loadS3Dir()
+						case "failed":
+							modal.SetText(fmt.Sprintf("Upload failed: %v", p.Error))
+						default:
+							modal.SetText(fmt.Sprintf("Uploading %s...\n\n%.1f%% complete", fileName, p.PercentComplete))
+						}
+					})
+				case err := <-done:
+					appCtx.App.QueueUpdateDraw(func() {
+						if err != nil {
+							modal.SetText(fmt.Sprintf("Error: %v", err))
+						}
+					})
+					return
+				}
+			}
+		}()
+	}
+
+	// Local table keyboard handling
+	localTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTab, tcell.KeyBacktab:
+			toggleFocus()
+			return nil
+		case tcell.KeyEsc:
+			showS3BrowserWithPrefix(appCtx, header, footer, bucketName, s3Prefix)
+			return nil
+		case tcell.KeyBackspace, tcell.KeyBackspace2:
+			parent := filepath.Dir(localPath)
+			if parent != localPath {
+				localPath = parent
+				updateLocalTitle()
+				loadLocalDir()
+			}
+			return nil
+		case tcell.KeyEnter:
+			row, _ := localTable.GetSelection()
+			if row > 0 && row <= len(localEntries) {
+				entry := localEntries[row-1]
+				if entry.IsDir {
+					localPath = entry.Path
+					updateLocalTitle()
+					loadLocalDir()
+				} else {
+					// Upload file
+					uploadFile(entry.Path)
+				}
+			}
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q':
+				appCtx.Stop()
+				return nil
+			case 'h':
+				showHiddenFiles = !showHiddenFiles
+				loadLocalDir()
+				return nil
+			case '~':
+				home, err := os.UserHomeDir()
+				if err == nil {
+					localPath = home
+					updateLocalTitle()
+					loadLocalDir()
+				}
+				return nil
+			case 'r':
+				loadLocalDir()
+				return nil
+			}
+		}
+		return event
+	})
+
+	// S3 table keyboard handling
+	s3Table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTab, tcell.KeyBacktab:
+			toggleFocus()
+			return nil
+		case tcell.KeyEsc:
+			showS3BrowserWithPrefix(appCtx, header, footer, bucketName, s3Prefix)
+			return nil
+		case tcell.KeyBackspace, tcell.KeyBackspace2:
+			if s3Prefix != "" {
+				parts := strings.Split(strings.TrimSuffix(s3Prefix, "/"), "/")
+				if len(parts) > 1 {
+					s3Prefix = strings.Join(parts[:len(parts)-1], "/") + "/"
+				} else {
+					s3Prefix = ""
+				}
+				updateS3Title()
+				loadS3Dir()
+			}
+			return nil
+		case tcell.KeyEnter:
+			row, _ := s3Table.GetSelection()
+			if row > 0 && row <= len(s3Objects) {
+				obj := s3Objects[row-1]
+				if obj.IsPrefix {
+					s3Prefix = obj.Key
+					updateS3Title()
+					loadS3Dir()
+				}
+			}
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q':
+				appCtx.Stop()
+				return nil
+			case 'r':
+				loadS3Dir()
+				return nil
+			}
+		}
+		return event
+	})
+
+	// Initialize titles and status
+	updateLocalTitle()
+	updateS3Title()
+	updateStatusBar()
+
+	// Load initial data
+	loadLocalDir()
+	loadS3Dir()
+
+	// Update footer
+	footer.SetText("[yellow]Tab: Switch[white] [gray]|[white] [yellow]Enter: Open/Upload[white] [gray]|[white] [yellow]Backspace: Up[white] [gray]|[white] [yellow]h: Hidden[white] [gray]|[white] [yellow]~: Home[white] [gray]|[white] [yellow]ESC: Exit[white]")
+
+	// Create horizontal split with local and S3 panes
+	browserFlex := tview.NewFlex()
+	browserFlex.SetDirection(tview.FlexColumn)
+	browserFlex.AddItem(localPane, 0, 1, true)
+	browserFlex.AddItem(s3Pane, 0, 1, false)
+
+	// Create main layout
+	mainLayout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(header, 1, 0, false).
+		AddItem(browserFlex, 0, 1, true).
+		AddItem(statusBar, 1, 0, false).
+		AddItem(footer, 1, 0, false)
+
+	appCtx.Pages.AddPage("s3-upload", mainLayout, true, false)
+	appCtx.PushPage("s3-upload")
+	appCtx.Pages.SwitchToPage("s3-upload")
+	appCtx.App.SetFocus(localTable)
+}
+
+// localFileEntry represents a local file or directory for the upload view
+type localFileEntry struct {
+	Name    string
+	Path    string
+	IsDir   bool
+	Size    int64
+	ModTime string
 }
 
 func showLambdaList(appCtx *AppContext, header, footer *tview.TextView) {
