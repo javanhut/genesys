@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/BurntSushi/toml"
@@ -301,26 +302,12 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 	}
 
 	// Key pair
-	var useKeyPair bool
-	keyPairPrompt := &survey.Confirm{
-		Message: "Use an existing key pair for SSH access?",
-		Help:    "Required if you want to SSH into the instance",
-		Default: true,
-	}
-	if err := survey.AskOne(keyPairPrompt, &useKeyPair); err != nil {
+	keyPairOption, keyPairName, err := iec.getKeyPairConfig(region)
+	if err != nil {
 		return config, err
 	}
-
-	if useKeyPair {
-		var keyPair string
-		keyPrompt := &survey.Input{
-			Message: "Key pair name:",
-			Help:    "The name of an existing EC2 key pair in your AWS account",
-		}
-		if err := survey.AskOne(keyPrompt, &keyPair); err != nil {
-			return config, err
-		}
-		config.KeyPair = keyPair
+	if keyPairOption != "none" {
+		config.KeyPair = keyPairName
 	}
 
 	// Public IP
@@ -528,6 +515,190 @@ func (iec *InteractiveEC2Config) getStorageConfig() (*EC2StorageConfig, error) {
 	}
 
 	return storage, nil
+}
+
+// getKeyPairConfig prompts user to select or create a key pair
+func (iec *InteractiveEC2Config) getKeyPairConfig(region string) (string, string, error) {
+	fmt.Println("\nKey Pair Configuration:")
+	fmt.Println("A key pair is required for SSH access to your instance.")
+
+	// Create AWS provider to list existing key pairs
+	provider, err := aws.NewAWSProvider(region)
+	if err != nil {
+		// If we can't connect to AWS, offer manual entry or skip
+		fmt.Println("Warning: Could not connect to AWS to list existing key pairs.")
+
+		keyPairOptions := []string{
+			"none (Launch without key pair - no SSH access)",
+			"enter (Enter existing key pair name)",
+		}
+
+		var selectedOption string
+		optionPrompt := &survey.Select{
+			Message: "Key pair option:",
+			Options: keyPairOptions,
+			Help:    "Select how to configure the key pair for SSH access",
+		}
+		if err := survey.AskOne(optionPrompt, &selectedOption); err != nil {
+			return "", "", err
+		}
+
+		if strings.HasPrefix(selectedOption, "none") {
+			return "none", "", nil
+		}
+
+		// Manual entry
+		var keyPairName string
+		namePrompt := &survey.Input{
+			Message: "Enter existing key pair name:",
+			Help:    "The name of an existing EC2 key pair in the selected region",
+		}
+		if err := survey.AskOne(namePrompt, &keyPairName, survey.WithValidator(survey.Required)); err != nil {
+			return "", "", err
+		}
+		return "existing", keyPairName, nil
+	}
+
+	// Get list of existing key pairs
+	ctx := context.Background()
+	computeService := provider.Compute().(*aws.ComputeService)
+	keyPairs, err := computeService.ListKeyPairsInRegion(ctx, region)
+	if err != nil {
+		fmt.Printf("Warning: Could not list key pairs: %v\n", err)
+	}
+
+	// Build options list
+	keyPairOptions := []string{
+		"create (Create new key pair)",
+		"none (Launch without key pair - no SSH access)",
+	}
+
+	// Add existing key pairs
+	for _, kp := range keyPairs {
+		keyPairOptions = append(keyPairOptions, fmt.Sprintf("existing:%s", kp.KeyName))
+	}
+
+	var selectedOption string
+	optionPrompt := &survey.Select{
+		Message: "Select key pair:",
+		Options: keyPairOptions,
+		Default: keyPairOptions[0], // Default to create new
+		Help:    "Key pairs enable SSH access to your instance",
+	}
+	if err := survey.AskOne(optionPrompt, &selectedOption); err != nil {
+		return "", "", err
+	}
+
+	// Handle selection
+	if strings.HasPrefix(selectedOption, "none") {
+		fmt.Println("Warning: Without a key pair, you will not be able to SSH into this instance.")
+		var confirmNoKey bool
+		confirmPrompt := &survey.Confirm{
+			Message: "Continue without key pair?",
+			Default: false,
+		}
+		if err := survey.AskOne(confirmPrompt, &confirmNoKey); err != nil {
+			return "", "", err
+		}
+		if !confirmNoKey {
+			// Ask again
+			return iec.getKeyPairConfig(region)
+		}
+		return "none", "", nil
+	}
+
+	if strings.HasPrefix(selectedOption, "existing:") {
+		keyPairName := strings.TrimPrefix(selectedOption, "existing:")
+		fmt.Printf("Using existing key pair: %s\n", keyPairName)
+		fmt.Println("Make sure you have the private key file (.pem) saved locally for SSH access.")
+		return "existing", keyPairName, nil
+	}
+
+	// Create new key pair
+	return iec.createNewKeyPair(region, computeService)
+}
+
+// createNewKeyPair creates a new EC2 key pair and saves it locally
+func (iec *InteractiveEC2Config) createNewKeyPair(region string, computeService *aws.ComputeService) (string, string, error) {
+	var keyName string
+	namePrompt := &survey.Input{
+		Message: "Enter name for new key pair:",
+		Default: fmt.Sprintf("genesys-key-%d", time.Now().Unix()),
+		Help:    "A unique name for your new EC2 key pair",
+	}
+	if err := survey.AskOne(namePrompt, &keyName, survey.WithValidator(survey.Required)); err != nil {
+		return "", "", err
+	}
+
+	// Validate key name (alphanumeric, hyphens, underscores only)
+	keyName = strings.TrimSpace(keyName)
+	if keyName == "" {
+		return "", "", fmt.Errorf("key pair name cannot be empty")
+	}
+
+	fmt.Printf("Creating key pair '%s' in region %s...\n", keyName, region)
+
+	// Create the key pair
+	ctx := context.Background()
+	keyPair, err := computeService.CreateKeyPairInRegion(ctx, keyName, region)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create key pair: %w", err)
+	}
+
+	// Save the private key to ~/.ssh/
+	keyPath, err := iec.saveKeyPairLocally(keyPair)
+	if err != nil {
+		fmt.Printf("Warning: Key pair created in AWS but failed to save locally: %v\n", err)
+		fmt.Printf("Key material:\n%s\n", keyPair.KeyMaterial)
+		fmt.Println("Please save this key manually to a .pem file with permissions 0600.")
+	} else {
+		fmt.Printf("Key pair created and saved to: %s\n", keyPath)
+		fmt.Printf("Key fingerprint: %s\n", keyPair.KeyFingerprint)
+	}
+
+	return "created", keyPair.KeyName, nil
+}
+
+// saveKeyPairLocally saves the private key to ~/.ssh/ with proper permissions
+func (iec *InteractiveEC2Config) saveKeyPairLocally(keyPair *aws.KeyPair) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	sshDir := filepath.Join(homeDir, ".ssh")
+
+	// Create .ssh directory if it doesn't exist
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create .ssh directory: %w", err)
+	}
+
+	keyPath := filepath.Join(sshDir, keyPair.KeyName+".pem")
+
+	// Check if file already exists
+	if _, err := os.Stat(keyPath); err == nil {
+		// File exists, prompt for overwrite or new name
+		var overwrite bool
+		overwritePrompt := &survey.Confirm{
+			Message: fmt.Sprintf("Key file %s already exists. Overwrite?", keyPath),
+			Default: false,
+		}
+		if err := survey.AskOne(overwritePrompt, &overwrite); err != nil {
+			return "", err
+		}
+
+		if !overwrite {
+			// Use a different name
+			keyPath = filepath.Join(sshDir, fmt.Sprintf("%s-%d.pem", keyPair.KeyName, time.Now().Unix()))
+		}
+	}
+
+	// Write the private key with restrictive permissions (0600)
+	if err := os.WriteFile(keyPath, []byte(keyPair.KeyMaterial), 0600); err != nil {
+		return "", fmt.Errorf("failed to write key file: %w", err)
+	}
+
+	return keyPath, nil
 }
 
 func (iec *InteractiveEC2Config) getTags() (map[string]string, error) {

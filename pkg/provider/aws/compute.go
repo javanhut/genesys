@@ -87,6 +87,12 @@ type EC2Instance struct {
 			Value string `xml:"value"`
 		} `xml:"item"`
 	} `xml:"tagSet"`
+	SecurityGroups struct {
+		Items []struct {
+			GroupId   string `xml:"groupId"`
+			GroupName string `xml:"groupName"`
+		} `xml:"item"`
+	} `xml:"groupSet"`
 }
 
 // EC2Error represents an EC2 API error response
@@ -523,6 +529,18 @@ func (c *ComputeService) convertToProviderInstanceWithRegion(ec2Instance EC2Inst
 		providerData["Platform"] = ec2Instance.Platform
 	}
 
+	// Add security groups
+	if len(ec2Instance.SecurityGroups.Items) > 0 {
+		var sgIds []string
+		var sgNames []string
+		for _, sg := range ec2Instance.SecurityGroups.Items {
+			sgIds = append(sgIds, sg.GroupId)
+			sgNames = append(sgNames, sg.GroupName)
+		}
+		providerData["SecurityGroupIds"] = sgIds
+		providerData["SecurityGroupNames"] = sgNames
+	}
+
 	return &provider.Instance{
 		ID:           ec2Instance.InstanceId,
 		Name:         name,
@@ -539,6 +557,248 @@ func (c *ComputeService) convertToProviderInstanceWithRegion(ec2Instance EC2Inst
 // AdoptInstance adopts an existing instance into management
 func (c *ComputeService) AdoptInstance(ctx context.Context, id string) (*provider.Instance, error) {
 	return c.GetInstance(ctx, id)
+}
+
+// Key Pair Management
+
+// KeyPair represents an EC2 key pair
+type KeyPair struct {
+	KeyName        string
+	KeyFingerprint string
+	KeyPairId      string
+	KeyMaterial    string // Only populated on creation
+	Region         string
+}
+
+// CreateKeyPairResponse represents the EC2 CreateKeyPair API response
+type CreateKeyPairResponse struct {
+	XMLName        xml.Name `xml:"CreateKeyPairResponse"`
+	KeyName        string   `xml:"keyName"`
+	KeyFingerprint string   `xml:"keyFingerprint"`
+	KeyPairId      string   `xml:"keyPairId"`
+	KeyMaterial    string   `xml:"keyMaterial"`
+}
+
+// DescribeKeyPairsResponse represents the EC2 DescribeKeyPairs API response
+type DescribeKeyPairsResponse struct {
+	XMLName  xml.Name `xml:"DescribeKeyPairsResponse"`
+	KeyPairs struct {
+		Items []struct {
+			KeyName        string `xml:"keyName"`
+			KeyFingerprint string `xml:"keyFingerprint"`
+			KeyPairId      string `xml:"keyPairId"`
+		} `xml:"item"`
+	} `xml:"keySet"`
+}
+
+// CreateKeyPair creates a new EC2 key pair and returns the private key material
+func (c *ComputeService) CreateKeyPair(ctx context.Context, keyName string) (*KeyPair, error) {
+	client, err := c.provider.CreateClient("ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "CreateKeyPair",
+		"Version": "2016-11-15",
+		"KeyName": keyName,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create key pair: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("CreateKeyPair failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var createResp CreateKeyPairResponse
+	if err := xml.Unmarshal(body, &createResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &KeyPair{
+		KeyName:        createResp.KeyName,
+		KeyFingerprint: createResp.KeyFingerprint,
+		KeyPairId:      createResp.KeyPairId,
+		KeyMaterial:    createResp.KeyMaterial,
+		Region:         c.provider.region,
+	}, nil
+}
+
+// CreateKeyPairInRegion creates a new EC2 key pair in a specific region
+func (c *ComputeService) CreateKeyPairInRegion(ctx context.Context, keyName, region string) (*KeyPair, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "CreateKeyPair",
+		"Version": "2016-11-15",
+		"KeyName": keyName,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create key pair: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("CreateKeyPair failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var createResp CreateKeyPairResponse
+	if err := xml.Unmarshal(body, &createResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &KeyPair{
+		KeyName:        createResp.KeyName,
+		KeyFingerprint: createResp.KeyFingerprint,
+		KeyPairId:      createResp.KeyPairId,
+		KeyMaterial:    createResp.KeyMaterial,
+		Region:         region,
+	}, nil
+}
+
+// ListKeyPairs lists all key pairs in the default region
+func (c *ComputeService) ListKeyPairs(ctx context.Context) ([]*KeyPair, error) {
+	client, err := c.provider.CreateClient("ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "DescribeKeyPairs",
+		"Version": "2016-11-15",
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe key pairs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeKeyPairs failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var descResp DescribeKeyPairsResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	var keyPairs []*KeyPair
+	for _, kp := range descResp.KeyPairs.Items {
+		keyPairs = append(keyPairs, &KeyPair{
+			KeyName:        kp.KeyName,
+			KeyFingerprint: kp.KeyFingerprint,
+			KeyPairId:      kp.KeyPairId,
+			Region:         c.provider.region,
+		})
+	}
+
+	return keyPairs, nil
+}
+
+// ListKeyPairsInRegion lists all key pairs in a specific region
+func (c *ComputeService) ListKeyPairsInRegion(ctx context.Context, region string) ([]*KeyPair, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "DescribeKeyPairs",
+		"Version": "2016-11-15",
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe key pairs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeKeyPairs failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var descResp DescribeKeyPairsResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	var keyPairs []*KeyPair
+	for _, kp := range descResp.KeyPairs.Items {
+		keyPairs = append(keyPairs, &KeyPair{
+			KeyName:        kp.KeyName,
+			KeyFingerprint: kp.KeyFingerprint,
+			KeyPairId:      kp.KeyPairId,
+			Region:         region,
+		})
+	}
+
+	return keyPairs, nil
+}
+
+// DeleteKeyPair deletes a key pair
+func (c *ComputeService) DeleteKeyPair(ctx context.Context, keyName string) error {
+	client, err := c.provider.CreateClient("ec2")
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "DeleteKeyPair",
+		"Version": "2016-11-15",
+		"KeyName": keyName,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete key pair: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return fmt.Errorf("DeleteKeyPair failed: %s", cleanError)
+	}
+
+	return nil
 }
 
 // Helper methods
@@ -615,6 +875,18 @@ func (c *ComputeService) convertToProviderInstance(ec2Instance EC2Instance) *pro
 	}
 	if ec2Instance.Platform != "" {
 		providerData["Platform"] = ec2Instance.Platform
+	}
+
+	// Add security groups
+	if len(ec2Instance.SecurityGroups.Items) > 0 {
+		var sgIds []string
+		var sgNames []string
+		for _, sg := range ec2Instance.SecurityGroups.Items {
+			sgIds = append(sgIds, sg.GroupId)
+			sgNames = append(sgNames, sg.GroupName)
+		}
+		providerData["SecurityGroupIds"] = sgIds
+		providerData["SecurityGroupNames"] = sgNames
 	}
 
 	return &provider.Instance{

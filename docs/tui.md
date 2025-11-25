@@ -386,6 +386,7 @@ genesys manage s3 my-production-bucket --tui
 |-----|--------|
 | `Enter` | View instance details |
 | `c` | SSH connect to instance |
+| `s` | Manage SSH security rules |
 | `m` | View metrics directly |
 | `r` | Refresh instance list |
 
@@ -542,9 +543,24 @@ The TUI provides built-in SSH connectivity to EC2 instances, allowing you to con
 
 - The instance must be in "running" state
 - The instance must have a public or private IP address
-- You need a valid PEM key file for the instance
+- You need a valid PEM key file for the instance (or create one with "New Key")
 - SSH client must be installed on your system
 - Security group must allow SSH access (port 22)
+- The instance must have been launched with a key pair
+
+### Creating a New Key Pair
+
+If you don't have a key pair, you can create one directly from the SSH dialog:
+
+1. Press `c` on an EC2 instance to open the SSH dialog
+2. Click "New Key" button
+3. Enter a name for the key pair (default: genesys-key-TIMESTAMP)
+4. Click "Create"
+5. The key pair is created in AWS in the same region as the instance
+6. The private key is automatically saved to `~/.ssh/<keyname>.pem`
+7. The key file path is auto-filled in the SSH dialog
+
+**Note:** Creating a new key pair does NOT automatically associate it with existing instances. You can only use the new key pair with new instances launched with that key pair.
 
 ### How It Works
 
@@ -595,10 +611,32 @@ Based on the instance's image, the default username is auto-detected:
 │                                             │
 │  Port:     22                               │
 │                                             │
-│        [ Connect ]    [ Cancel ]            │
+│   [ Connect ]  [ New Key ]  [ Cancel ]      │
 │                                             │
 └─────────────────────────────────────────────┘
 ```
+
+### Create Key Pair Dialog
+
+Press "New Key" in the SSH dialog to create a new EC2 key pair:
+
+```
+┌─────────────────────────────────────────────┐
+│  Create New Key Pair                        │
+├─────────────────────────────────────────────┤
+│                                             │
+│  Key Name: genesys-key-1234567890           │
+│                                             │
+│  Region:   us-east-1                        │
+│                                             │
+│  Save to:  ~/.ssh/<keyname>.pem             │
+│                                             │
+│        [ Create ]    [ Cancel ]             │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+The key pair is created in AWS and the private key is automatically saved to `~/.ssh/` with proper permissions (0600).
 
 ### Path Expansion
 
@@ -644,3 +682,114 @@ The SSH connection uses these options for reliability:
 - Wrong username for the AMI type
 - Wrong key file for this instance
 - Key file has incorrect permissions (run: chmod 600 key.pem)
+
+## Security Group SSH Rule Management
+
+The TUI provides built-in security group management to add SSH inbound rules, allowing you to open port 22 for SSH access directly from the interface.
+
+### Accessing Security Group Management
+
+There are two ways to access security group SSH rule management:
+
+1. **From EC2 List**: Press `s` on any instance to manage SSH rules
+2. **From SSH Dialog**: Press "SSH Rules" button in the SSH connection dialog
+
+### Add SSH Rule Dialog
+
+```
++---------------------------------------------+
+|  Add SSH Rule to Security Group             |
++---------------------------------------------+
+|                                             |
+|  Security Group: [ default (sg-12345678) ]  |
+|                                             |
+|  Source CIDR:    0.0.0.0/0                  |
+|                                             |
+|  Warning: 0.0.0.0/0 allows SSH from         |
+|  anywhere. Consider using your IP for       |
+|  better security.                           |
+|                                             |
+|  [ My IP ]  [ Add Rule ]  [ Cancel ]        |
+|                                             |
++---------------------------------------------+
+```
+
+### Features
+
+**Security Group Selection**
+- If the instance has multiple security groups, you can choose which one to modify
+- Displays both the group name and ID
+
+**CIDR Configuration**
+- Default: `0.0.0.0/0` (allows SSH from anywhere)
+- Use "My IP" button to auto-detect your public IP address
+- Enter a specific IP with `/32` for single-host access (e.g., `1.2.3.4/32`)
+
+**Auto IP Detection**
+- Press "My IP" to query your current public IP address
+- Uses multiple IP detection services for reliability
+- Displays your IP so you can enter it as `YOUR_IP/32`
+
+### Security Best Practices
+
+1. **Avoid 0.0.0.0/0**: This allows SSH from any IP address worldwide
+2. **Use Your IP**: Press "My IP" and enter `YOUR_IP/32` for single-host access
+3. **Use VPN Range**: If using a VPN, enter your VPN's CIDR range
+4. **Corporate Networks**: Use your office's public IP range
+5. **Temporary Access**: Remove the rule after you're done
+
+### How It Works
+
+1. **Detects Security Groups**: Reads the instance's attached security groups from ProviderData
+2. **Checks Existing Rules**: Queries each security group to see if SSH (port 22) is already allowed
+3. **Adds Ingress Rule**: Uses `AuthorizeSecurityGroupIngress` API to add the TCP port 22 rule
+4. **Region-Aware**: Uses the correct region for the instance's security group
+
+### Error Handling
+
+**"No security groups found"**
+- Instance may not have security group information in ProviderData
+- Try refreshing the instance list with 'r'
+
+**"SSH rule already exists"**
+- The security group already has an SSH rule for the specified CIDR
+- Check the existing rule's CIDR to ensure it covers your IP
+
+**"Failed to add SSH rule"**
+- May indicate IAM permission issues (need ec2:AuthorizeSecurityGroupIngress)
+- Could be a network connectivity issue
+
+### Workflow: SSH to a New Instance
+
+If you launched an instance without SSH access configured, follow these steps:
+
+```
+1. Launch: genesys tui
+2. Press '2' for EC2
+3. Navigate to your instance
+4. Press 's' to manage SSH rules
+5. Select your security group
+6. Click "My IP" to get your IP
+7. Enter YOUR_IP/32 in the CIDR field
+8. Click "Add Rule"
+9. Press 'c' to SSH connect
+10. Connect with your key file
+```
+
+### Key Pair and Security Group Combined Workflow
+
+For instances launched without a key pair AND without SSH rules:
+
+1. **Create Key Pair** (for future instances):
+   - Press 'c' on the instance
+   - Click "New Key"
+   - This creates a key pair but cannot be used with existing instances
+
+2. **Open SSH Port**:
+   - Press 's' on the instance
+   - Add an SSH rule with your IP
+
+3. **For the Current Instance**:
+   - You cannot add a key pair to an existing instance
+   - Use EC2 Instance Connect (AWS Console) or Session Manager instead
+   - Or terminate and launch a new instance with the new key pair

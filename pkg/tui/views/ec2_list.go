@@ -86,6 +86,14 @@ func (ev *EC2ListView) setupTable() {
 					tui.ShowSSHDialog(ev.appCtx, instance)
 				}
 				return nil
+			case 's':
+				// Security Group SSH Rules
+				row, _ := ev.table.GetSelection()
+				if row > 0 && row-1 < len(ev.instances) {
+					instance := ev.instances[row-1]
+					tui.ShowAddSSHRuleDialog(ev.appCtx, instance, nil)
+				}
+				return nil
 			}
 		}
 		return event
@@ -170,6 +178,7 @@ func (ev *EC2ListView) GetFooter() *widgets.Footer {
 	return widgets.NewFooter([]widgets.Shortcut{
 		{Key: "↑↓", Description: "Navigate"},
 		{Key: "c", Description: "SSH Connect"},
+		{Key: "s", Description: "SSH Rules"},
 		{Key: "m", Description: "Metrics"},
 		{Key: "r", Description: "Refresh"},
 		{Key: "ESC", Description: "Back"},

@@ -171,8 +171,8 @@ func showEC2List(appCtx *AppContext, header, footer *tview.TextView) {
 		Background(tcell.ColorDarkCyan).
 		Foreground(tcell.ColorWhite))
 
-	// Add headers
-	headers := []string{"Instance ID", "Name", "State", "Type", "IP Address"}
+	// Add headers - include Region column for multi-region discovery
+	headers := []string{"Instance ID", "Name", "Region", "State", "Type", "IP Address"}
 	for i, header := range headers {
 		cell := tview.NewTableCell(header).
 			SetTextColor(tcell.ColorYellow).
@@ -182,8 +182,8 @@ func showEC2List(appCtx *AppContext, header, footer *tview.TextView) {
 		table.SetCell(0, i, cell)
 	}
 
-	// Update footer
-	footer.SetText("[yellow]↑↓: Navigate[white] [gray]|[white] [yellow]Enter: Details[white] [gray]|[white] [yellow]m: Metrics[white] [gray]|[white] [yellow]ESC: Back[white] [gray]|[white] [yellow]q: Quit[white]")
+	// Update footer - add SSH connect and SSH rules options
+	footer.SetText("[yellow]↑↓: Navigate[white] [gray]|[white] [yellow]c: SSH Connect[white] [gray]|[white] [yellow]s: SSH Rules[white] [gray]|[white] [yellow]Enter: Details[white] [gray]|[white] [yellow]m: Metrics[white] [gray]|[white] [yellow]r: Refresh[white] [gray]|[white] [yellow]ESC: Back[white] [gray]|[white] [yellow]q: Quit[white]")
 
 	// Handle keyboard shortcuts
 	var instances []*provider.Instance
@@ -205,6 +205,20 @@ func showEC2List(appCtx *AppContext, header, footer *tview.TextView) {
 				return nil
 			case 'r':
 				loadEC2Instances(appCtx, table, &instances)
+				return nil
+			case 'c':
+				// SSH Connect
+				row, _ := table.GetSelection()
+				if row > 0 && row <= len(instances) {
+					ShowSSHDialog(appCtx, instances[row-1])
+				}
+				return nil
+			case 's':
+				// SSH Security Group Rules
+				row, _ := table.GetSelection()
+				if row > 0 && row <= len(instances) {
+					ShowAddSSHRuleDialog(appCtx, instances[row-1], nil)
+				}
 				return nil
 			}
 		}
@@ -238,8 +252,8 @@ func loadEC2Instances(appCtx *AppContext, table *tview.Table, instancesPtr *[]*p
 		table.RemoveRow(i)
 	}
 
-	// Show loading
-	table.SetCell(1, 0, tview.NewTableCell("Loading instances...").
+	// Show loading - scanning all regions takes time
+	table.SetCell(1, 0, tview.NewTableCell("Scanning all AWS regions for instances...").
 		SetTextColor(tcell.ColorGray))
 
 	// Load instances asynchronously
@@ -257,7 +271,7 @@ func loadEC2Instances(appCtx *AppContext, table *tview.Table, instancesPtr *[]*p
 			}
 
 			if len(instances) == 0 {
-				table.SetCell(1, 0, tview.NewTableCell("No EC2 instances found").
+				table.SetCell(1, 0, tview.NewTableCell("No EC2 instances found in any region").
 					SetTextColor(tcell.ColorGray))
 				return
 			}
@@ -274,11 +288,29 @@ func loadEC2Instances(appCtx *AppContext, table *tview.Table, instancesPtr *[]*p
 					stateColor = tcell.ColorRed
 				}
 
+				// Get region from ProviderData
+				region := ""
+				if instance.ProviderData != nil {
+					if r, ok := instance.ProviderData["Region"].(string); ok {
+						region = r
+					}
+				}
+
+				// Display public IP if available, otherwise private IP
+				displayIP := instance.PublicIP
+				if displayIP == "" {
+					displayIP = instance.PrivateIP
+					if displayIP != "" {
+						displayIP = displayIP + " (private)"
+					}
+				}
+
 				table.SetCell(row, 0, tview.NewTableCell(instance.ID).SetTextColor(tcell.ColorWhite))
 				table.SetCell(row, 1, tview.NewTableCell(instance.Name).SetTextColor(tcell.ColorBlue))
-				table.SetCell(row, 2, tview.NewTableCell(instance.State).SetTextColor(stateColor))
-				table.SetCell(row, 3, tview.NewTableCell(string(instance.Type)).SetTextColor(tcell.ColorWhite))
-				table.SetCell(row, 4, tview.NewTableCell(instance.PublicIP).SetTextColor(tcell.ColorWhite))
+				table.SetCell(row, 2, tview.NewTableCell(region).SetTextColor(tcell.ColorYellow))
+				table.SetCell(row, 3, tview.NewTableCell(instance.State).SetTextColor(stateColor))
+				table.SetCell(row, 4, tview.NewTableCell(string(instance.Type)).SetTextColor(tcell.ColorWhite))
+				table.SetCell(row, 5, tview.NewTableCell(displayIP).SetTextColor(tcell.ColorWhite))
 			}
 		})
 	}()
