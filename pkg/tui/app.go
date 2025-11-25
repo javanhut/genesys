@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/javanhut/genesys/pkg/provider"
@@ -604,7 +605,7 @@ func showS3BrowserWithPrefix(appCtx *AppContext, header, footer *tview.TextView,
 	}
 
 	// Update footer
-	footer.SetText("[yellow]↑↓: Navigate[white] [gray]|[white] [yellow]Enter: Open[white] [gray]|[white] [yellow]Backspace: Up[white] [gray]|[white] [yellow]d: Download[white] [gray]|[white] [yellow]u: Upload[white] [gray]|[white] [yellow]ESC: Back[white]")
+	footer.SetText("[yellow]↑↓: Navigate[white] [gray]|[white] [yellow]Enter: Open[white] [gray]|[white] [yellow]Backspace: Up[white] [gray]|[white] [yellow]d: Download[white] [gray]|[white] [yellow]u: Upload[white] [gray]|[white] [yellow]c: Cross-Region Copy[white] [gray]|[white] [yellow]ESC: Back[white]")
 
 	// Store objects for navigation
 	var objects []*provider.S3ObjectInfo
@@ -657,6 +658,10 @@ func showS3BrowserWithPrefix(appCtx *AppContext, header, footer *tview.TextView,
 			case 'u':
 				// Enter upload mode with split-pane view
 				showS3UploadView(appCtx, header, footer, bucketName, prefix)
+				return nil
+			case 'c':
+				// Enter cross-region copy mode
+				showS3CrossRegionCopyView(appCtx, header, footer, bucketName, prefix, objects)
 				return nil
 			}
 		}
@@ -1215,6 +1220,511 @@ type localFileEntry struct {
 	IsDir   bool
 	Size    int64
 	ModTime string
+}
+
+func showS3CrossRegionCopyView(appCtx *AppContext, header, footer *tview.TextView, bucketName, prefix string, objects []*provider.S3ObjectInfo) {
+	// Get source bucket region
+	srcRegion, err := appCtx.Provider.Storage().GetBucketRegion(appCtx.Ctx, bucketName)
+	if err != nil {
+		srcRegion = appCtx.Provider.Region()
+	}
+
+	// State variables
+	selectedObjects := make(map[string]bool)
+	var dstRegion string
+	var copyInProgress bool
+	focusIndex := 0 // 0: srcTable, 1: regionList, 2: dstBucketInput
+
+	// Initialize selected objects (select all by default)
+	for _, obj := range objects {
+		if !obj.IsPrefix {
+			selectedObjects[obj.Key] = true
+		}
+	}
+
+	// Create source objects table (left pane)
+	srcTable := tview.NewTable()
+	srcTable.SetBorders(false)
+	srcTable.SetSelectable(true, false)
+	srcTable.SetFixed(1, 0)
+	srcTable.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.ColorDarkGreen).
+		Foreground(tcell.ColorWhite))
+
+	// Set headers for source table
+	srcHeaders := []string{"[x]", "Name", "Size"}
+	for i, h := range srcHeaders {
+		cell := tview.NewTableCell(h).
+			SetTextColor(tcell.ColorYellow).
+			SetAlign(tview.AlignLeft).
+			SetSelectable(false).
+			SetAttributes(tcell.AttrBold)
+		srcTable.SetCell(0, i, cell)
+	}
+
+	// Populate source objects
+	row := 1
+	for _, obj := range objects {
+		if obj.IsPrefix {
+			continue
+		}
+		checkbox := "[x]"
+		srcTable.SetCell(row, 0, tview.NewTableCell(checkbox).SetTextColor(tcell.ColorGreen))
+		name := obj.Key
+		if prefix != "" {
+			name = strings.TrimPrefix(obj.Key, prefix)
+		}
+		srcTable.SetCell(row, 1, tview.NewTableCell(name).SetTextColor(tcell.ColorWhite))
+		srcTable.SetCell(row, 2, tview.NewTableCell(formatBytes(obj.Size)).SetTextColor(tcell.ColorGray))
+		row++
+	}
+
+	if row == 1 {
+		srcTable.SetCell(1, 1, tview.NewTableCell("No objects to copy").SetTextColor(tcell.ColorGray))
+	}
+
+	// Create region selection list
+	regionList := tview.NewList()
+	regionList.ShowSecondaryText(false)
+	regionList.SetHighlightFullLine(true)
+	regionList.SetSelectedBackgroundColor(tcell.ColorDarkBlue)
+
+	// Populate regions (excluding source region)
+	for _, region := range AWSRegions {
+		if region.Code != srcRegion {
+			regionList.AddItem(fmt.Sprintf("%s (%s)", region.Code, region.Name), "", 0, nil)
+		}
+	}
+
+	// Set initial selection
+	if regionList.GetItemCount() > 0 {
+		regionList.SetCurrentItem(0)
+		mainText, _ := regionList.GetItemText(0)
+		parts := strings.Split(mainText, " ")
+		if len(parts) > 0 {
+			dstRegion = parts[0]
+		}
+	}
+
+	// Create destination bucket input
+	dstBucketInput := tview.NewInputField()
+	dstBucketInput.SetLabel("Dest Bucket: ")
+	dstBucketInput.SetFieldWidth(30)
+	dstBucketInput.SetFieldBackgroundColor(tcell.ColorDarkBlue)
+	dstBucketInput.SetText(bucketName + "-" + dstRegion)
+
+	// Progress text
+	progressText := tview.NewTextView()
+	progressText.SetDynamicColors(true)
+	progressText.SetBorder(true)
+	progressText.SetTitle(" Progress ")
+	progressText.SetBorderColor(tcell.ColorGray)
+	progressText.SetText("[gray]Press 'c' to start copying selected objects to the destination bucket[white]")
+
+	// Status bar
+	statusBar := tview.NewTextView()
+	statusBar.SetDynamicColors(true)
+	statusBar.SetTextAlign(tview.AlignCenter)
+
+	// Update status bar function
+	updateStatusBar := func() {
+		var selectedCount int
+		var selectedSize int64
+		for _, obj := range objects {
+			if obj.IsPrefix {
+				continue
+			}
+			if selectedObjects[obj.Key] {
+				selectedCount++
+				selectedSize += obj.Size
+			}
+		}
+
+		focusName := "Source Objects"
+		switch focusIndex {
+		case 1:
+			focusName = "Region Selection"
+		case 2:
+			focusName = "Bucket Name"
+		}
+
+		dstBucket := dstBucketInput.GetText()
+		statusBar.SetText(fmt.Sprintf(
+			"[yellow]Focus:[white] %s | [yellow]Selected:[white] %d objects (%s) | [yellow]Dest:[white] %s/%s | [yellow]Tab:[white] Switch | [yellow]Space:[white] Toggle | [yellow]c:[white] Copy",
+			focusName, selectedCount, formatBytes(selectedSize), dstRegion, dstBucket,
+		))
+	}
+
+	// Toggle selection helper
+	toggleSelection := func(tableRow int) {
+		objIndex := 0
+		for _, obj := range objects {
+			if obj.IsPrefix {
+				continue
+			}
+			objIndex++
+			if objIndex == tableRow {
+				selectedObjects[obj.Key] = !selectedObjects[obj.Key]
+				checkbox := "[ ]"
+				color := tcell.ColorGray
+				if selectedObjects[obj.Key] {
+					checkbox = "[x]"
+					color = tcell.ColorGreen
+				}
+				srcTable.GetCell(tableRow, 0).SetText(checkbox).SetTextColor(color)
+				updateStatusBar()
+				break
+			}
+		}
+	}
+
+	// Select all helper
+	selectAll := func(selected bool) {
+		r := 1
+		for _, obj := range objects {
+			if obj.IsPrefix {
+				continue
+			}
+			selectedObjects[obj.Key] = selected
+			checkbox := "[ ]"
+			color := tcell.ColorGray
+			if selected {
+				checkbox = "[x]"
+				color = tcell.ColorGreen
+			}
+			srcTable.GetCell(r, 0).SetText(checkbox).SetTextColor(color)
+			r++
+		}
+		updateStatusBar()
+	}
+
+	// Start copy function
+	startCopy := func() {
+		if copyInProgress {
+			return
+		}
+
+		dstBucket := dstBucketInput.GetText()
+		if dstBucket == "" {
+			progressText.SetText("[red]Error: Please enter a destination bucket name[white]")
+			return
+		}
+
+		if dstRegion == "" {
+			progressText.SetText("[red]Error: Please select a destination region[white]")
+			return
+		}
+
+		// Get selected objects
+		var selectedObjs []*provider.S3ObjectInfo
+		for _, obj := range objects {
+			if obj.IsPrefix {
+				continue
+			}
+			if selectedObjects[obj.Key] {
+				selectedObjs = append(selectedObjs, obj)
+			}
+		}
+
+		if len(selectedObjs) == 0 {
+			progressText.SetText("[red]Error: No objects selected for copying[white]")
+			return
+		}
+
+		copyInProgress = true
+
+		progressText.SetText(fmt.Sprintf(
+			"[yellow]Starting cross-region copy...[white]\n"+
+				"Source: s3://%s (%s)\n"+
+				"Destination: s3://%s (%s)\n"+
+				"Objects: %d\n\n"+
+				"[gray]Please wait...[white]",
+			bucketName, srcRegion,
+			dstBucket, dstRegion,
+			len(selectedObjs),
+		))
+
+		// Perform copy in background
+		go func() {
+			startTime := time.Now()
+			var totalSize int64
+			for _, obj := range selectedObjs {
+				totalSize += obj.Size
+			}
+
+			var copiedObjects, copiedBytes int64
+			var failedKeys []string
+
+			for i, obj := range selectedObjs {
+				// Update progress
+				appCtx.App.QueueUpdateDraw(func() {
+					elapsed := time.Since(startTime)
+					pct := float64(i) / float64(len(selectedObjs)) * 100
+
+					var progressBar string
+					barWidth := 30
+					filled := int(pct / 100 * float64(barWidth))
+					for j := 0; j < barWidth; j++ {
+						if j < filled {
+							progressBar += "="
+						} else if j == filled {
+							progressBar += ">"
+						} else {
+							progressBar += " "
+						}
+					}
+
+					displayKey := obj.Key
+					if len(displayKey) > 35 {
+						displayKey = "..." + displayKey[len(displayKey)-32:]
+					}
+
+					progressText.SetText(fmt.Sprintf(
+						"[yellow]Status: COPYING[white]\n\n"+
+							"Source: [blue]s3://%s[white] (%s)\n"+
+							"Dest:   [blue]s3://%s[white] (%s)\n\n"+
+							"Progress: [%s] %.1f%%\n"+
+							"Objects:  %d / %d\n"+
+							"Data:     %s / %s\n"+
+							"Current:  [gray]%s[white]\n"+
+							"Elapsed:  %s",
+						bucketName, srcRegion,
+						dstBucket, dstRegion,
+						progressBar, pct,
+						copiedObjects, len(selectedObjs),
+						formatBytes(copiedBytes), formatBytes(totalSize),
+						displayKey,
+						elapsed.Round(time.Second),
+					))
+				})
+
+				// Determine destination key
+				dstKey := obj.Key
+				if prefix != "" {
+					dstKey = strings.TrimPrefix(obj.Key, prefix)
+				}
+
+				// Copy the object
+				err := appCtx.Provider.Storage().CopyObjectCrossRegion(
+					appCtx.Ctx,
+					bucketName,
+					obj.Key,
+					dstRegion,
+					dstBucket,
+					dstKey,
+				)
+
+				if err != nil {
+					failedKeys = append(failedKeys, obj.Key)
+				} else {
+					copiedObjects++
+					copiedBytes += obj.Size
+				}
+			}
+
+			// Final update
+			appCtx.App.QueueUpdateDraw(func() {
+				elapsed := time.Since(startTime)
+				bytesPerSecond := float64(copiedBytes) / elapsed.Seconds()
+
+				status := "[green]COMPLETE[white]"
+				if len(failedKeys) > 0 {
+					if copiedObjects == 0 {
+						status = "[red]FAILED[white]"
+					} else {
+						status = "[yellow]PARTIAL[white]"
+					}
+				}
+
+				var text strings.Builder
+				text.WriteString(fmt.Sprintf("Status: %s\n\n", status))
+				text.WriteString(fmt.Sprintf("Source: [blue]s3://%s[white] (%s)\n", bucketName, srcRegion))
+				text.WriteString(fmt.Sprintf("Dest:   [blue]s3://%s[white] (%s)\n\n", dstBucket, dstRegion))
+				text.WriteString(fmt.Sprintf("Objects:  %d / %d copied", copiedObjects, len(selectedObjs)))
+				if len(failedKeys) > 0 {
+					text.WriteString(fmt.Sprintf(" ([red]%d failed[white])", len(failedKeys)))
+				}
+				text.WriteString("\n")
+				text.WriteString(fmt.Sprintf("Data:     %s transferred\n", formatBytes(copiedBytes)))
+				text.WriteString(fmt.Sprintf("Speed:    %s/s\n", formatBytes(int64(bytesPerSecond))))
+				text.WriteString(fmt.Sprintf("Elapsed:  %s\n\n", elapsed.Round(time.Second)))
+				text.WriteString("[gray]Press ESC to go back[white]")
+
+				progressText.SetText(text.String())
+				copyInProgress = false
+			})
+		}()
+	}
+
+	// Region list change handler
+	regionList.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		parts := strings.Split(mainText, " ")
+		if len(parts) > 0 {
+			dstRegion = parts[0]
+			// Update default bucket name
+			dstBucketInput.SetText(bucketName + "-" + dstRegion)
+			updateStatusBar()
+		}
+	})
+
+	// Source table input handler
+	srcTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTab:
+			focusIndex = 1
+			appCtx.App.SetFocus(regionList)
+			updateStatusBar()
+			return nil
+		case tcell.KeyEsc:
+			if !copyInProgress {
+				appCtx.Pages.RemovePage("s3-copy")
+				showS3BrowserWithPrefix(appCtx, header, footer, bucketName, prefix)
+			}
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case ' ':
+				r, _ := srcTable.GetSelection()
+				if r > 0 {
+					toggleSelection(r)
+				}
+				return nil
+			case 'a':
+				selectAll(true)
+				return nil
+			case 'n':
+				selectAll(false)
+				return nil
+			case 'c':
+				startCopy()
+				return nil
+			case 'q':
+				if !copyInProgress {
+					appCtx.Stop()
+				}
+				return nil
+			}
+		}
+		return event
+	})
+
+	// Region list input handler
+	regionList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTab:
+			focusIndex = 2
+			appCtx.App.SetFocus(dstBucketInput)
+			updateStatusBar()
+			return nil
+		case tcell.KeyBacktab:
+			focusIndex = 0
+			appCtx.App.SetFocus(srcTable)
+			updateStatusBar()
+			return nil
+		case tcell.KeyEsc:
+			if !copyInProgress {
+				appCtx.Pages.RemovePage("s3-copy")
+				showS3BrowserWithPrefix(appCtx, header, footer, bucketName, prefix)
+			}
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'c':
+				startCopy()
+				return nil
+			case 'q':
+				if !copyInProgress {
+					appCtx.Stop()
+				}
+				return nil
+			}
+		}
+		return event
+	})
+
+	// Bucket input handler
+	dstBucketInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyTab:
+			focusIndex = 0
+			appCtx.App.SetFocus(srcTable)
+			updateStatusBar()
+			return nil
+		case tcell.KeyBacktab:
+			focusIndex = 1
+			appCtx.App.SetFocus(regionList)
+			updateStatusBar()
+			return nil
+		case tcell.KeyEsc:
+			if !copyInProgress {
+				appCtx.Pages.RemovePage("s3-copy")
+				showS3BrowserWithPrefix(appCtx, header, footer, bucketName, prefix)
+			}
+			return nil
+		case tcell.KeyEnter:
+			startCopy()
+			return nil
+		}
+		return event
+	})
+
+	// Create panes
+	srcPane := tview.NewFlex()
+	srcPane.SetDirection(tview.FlexRow)
+	srcPane.SetBorder(true)
+	srcPane.SetTitle(fmt.Sprintf(" Source: %s (%s) ", bucketName, srcRegion))
+	srcPane.SetBorderColor(tcell.ColorGreen)
+	srcPane.AddItem(srcTable, 0, 1, true)
+
+	dstPane := tview.NewFlex()
+	dstPane.SetDirection(tview.FlexRow)
+	dstPane.SetBorder(true)
+	dstPane.SetTitle(" Destination ")
+	dstPane.SetBorderColor(tcell.ColorBlue)
+
+	regionLabel := tview.NewTextView()
+	regionLabel.SetText("[yellow]Select Region:[white]")
+	regionLabel.SetDynamicColors(true)
+
+	bucketLabel := tview.NewTextView()
+	bucketLabel.SetText("[yellow]Bucket Name:[white]")
+	bucketLabel.SetDynamicColors(true)
+
+	dstPane.AddItem(regionLabel, 1, 0, false)
+	dstPane.AddItem(regionList, 0, 1, false)
+	dstPane.AddItem(bucketLabel, 1, 0, false)
+	dstPane.AddItem(dstBucketInput, 1, 0, false)
+
+	// Main content
+	mainContent := tview.NewFlex()
+	mainContent.SetDirection(tview.FlexColumn)
+	mainContent.AddItem(srcPane, 0, 1, true)
+	mainContent.AddItem(dstPane, 0, 1, false)
+
+	// Full layout
+	copyLayout := tview.NewFlex()
+	copyLayout.SetDirection(tview.FlexRow)
+	copyLayout.AddItem(mainContent, 0, 1, true)
+	copyLayout.AddItem(progressText, 12, 0, false)
+	copyLayout.AddItem(statusBar, 1, 0, false)
+
+	// Update footer
+	footer.SetText("[yellow]Tab: Switch[white] [gray]|[white] [yellow]Space: Toggle[white] [gray]|[white] [yellow]a/n: All/None[white] [gray]|[white] [yellow]c: Start Copy[white] [gray]|[white] [yellow]ESC: Back[white]")
+
+	// Initialize status bar
+	updateStatusBar()
+
+	// Create main layout
+	mainLayout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(header, 1, 0, false).
+		AddItem(copyLayout, 0, 1, true).
+		AddItem(footer, 1, 0, false)
+
+	appCtx.Pages.AddPage("s3-copy", mainLayout, true, false)
+	appCtx.PushPage("s3-copy")
+	appCtx.Pages.SwitchToPage("s3-copy")
+	appCtx.App.SetFocus(srcTable)
 }
 
 func showLambdaList(appCtx *AppContext, header, footer *tview.TextView) {

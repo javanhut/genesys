@@ -73,6 +73,12 @@ type StorageService interface {
 
 	// Advanced
 	GeneratePresignedURL(ctx context.Context, bucketName, key string, expiresIn int) (string, error)
+
+	// Cross-Region Operations
+	CopyObjectCrossRegion(ctx context.Context, srcBucket, srcKey, dstRegion, dstBucket, dstKey string) error
+	CopyBucketCrossRegion(ctx context.Context, srcBucket, dstRegion, dstBucket, prefix string, progress chan<- *CrossRegionCopyProgress) error
+	ListBucketsInRegion(ctx context.Context, region string) ([]*Bucket, error)
+	GetBucketRegion(ctx context.Context, bucketName string) (string, error)
 }
 
 // NetworkService handles networking resources

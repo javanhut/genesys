@@ -230,6 +230,37 @@ func (m *MockStorageService) GeneratePresignedURL(ctx context.Context, bucketNam
 	return "https://example.com/presigned", nil
 }
 
+func (m *MockStorageService) CopyObjectCrossRegion(ctx context.Context, srcBucket, srcKey, dstRegion, dstBucket, dstKey string) error {
+	return nil
+}
+
+func (m *MockStorageService) CopyBucketCrossRegion(ctx context.Context, srcBucket, dstRegion, dstBucket, prefix string, progress chan<- *CrossRegionCopyProgress) error {
+	if progress != nil {
+		progress <- &CrossRegionCopyProgress{
+			SourceBucket:    srcBucket,
+			DestBucket:      dstBucket,
+			DestRegion:      dstRegion,
+			Status:          "complete",
+			PercentComplete: 100,
+		}
+	}
+	return nil
+}
+
+func (m *MockStorageService) ListBucketsInRegion(ctx context.Context, region string) ([]*Bucket, error) {
+	return []*Bucket{
+		{
+			Name:      "mock-bucket-" + region,
+			Region:    region,
+			CreatedAt: time.Now(),
+		},
+	}, nil
+}
+
+func (m *MockStorageService) GetBucketRegion(ctx context.Context, bucketName string) (string, error) {
+	return "us-east-1", nil
+}
+
 // MockNetworkService mock implementation
 type MockNetworkService struct{}
 

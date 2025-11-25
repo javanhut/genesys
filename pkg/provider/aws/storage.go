@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/javanhut/genesys/pkg/provider"
@@ -1386,4 +1387,571 @@ func (s *StorageService) GeneratePresignedURL(ctx context.Context, bucketName, k
 	}
 
 	return fmt.Sprintf("%s?%s", url, strings.Join(paramPairs, "&")), nil
+}
+
+// GetBucketRegion retrieves the region where a bucket is located
+func (s *StorageService) GetBucketRegion(ctx context.Context, bucketName string) (string, error) {
+	client, err := s.provider.CreateClient("s3")
+	if err != nil {
+		return "", fmt.Errorf("failed to create S3 client: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("/%s", bucketName)
+	params := map[string]string{"location": ""}
+
+	resp, err := client.Request("GET", endpoint, params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get bucket location: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return "", fmt.Errorf("GetBucketLocation failed with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var locationResult BucketLocationConstraint
+	if err := xml.Unmarshal(body, &locationResult); err != nil {
+		// Empty response means us-east-1
+		if len(body) == 0 || string(body) == "" {
+			return "us-east-1", nil
+		}
+		return "", fmt.Errorf("failed to parse location response: %w", err)
+	}
+
+	// Empty LocationConstraint means us-east-1
+	if locationResult.LocationConstraint == "" {
+		return "us-east-1", nil
+	}
+
+	return locationResult.LocationConstraint, nil
+}
+
+// ListBucketsInRegion lists all buckets and filters by region
+func (s *StorageService) ListBucketsInRegion(ctx context.Context, region string) ([]*provider.Bucket, error) {
+	// List all buckets first
+	allBuckets, err := s.ListBuckets(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter by region
+	var regionBuckets []*provider.Bucket
+	for _, bucket := range allBuckets {
+		bucketRegion, err := s.GetBucketRegion(ctx, bucket.Name)
+		if err != nil {
+			// Skip buckets we can't determine region for
+			continue
+		}
+		if bucketRegion == region {
+			bucket.Region = bucketRegion
+			regionBuckets = append(regionBuckets, bucket)
+		}
+	}
+
+	return regionBuckets, nil
+}
+
+// CopyObjectCrossRegion copies an object from source bucket to destination bucket in a different region
+func (s *StorageService) CopyObjectCrossRegion(ctx context.Context, srcBucket, srcKey, dstRegion, dstBucket, dstKey string) error {
+	// Create a client for the destination region
+	dstClient, err := NewAWSClient(dstRegion, "s3")
+	if err != nil {
+		return fmt.Errorf("failed to create destination region client: %w", err)
+	}
+
+	// Get source object metadata to check size
+	srcMetadata, err := s.GetObjectMetadata(ctx, srcBucket, srcKey)
+	if err != nil {
+		return fmt.Errorf("failed to get source object metadata: %w", err)
+	}
+
+	// For objects larger than 5GB, use multipart copy
+	const multipartThreshold = 5 * 1024 * 1024 * 1024 // 5GB
+	if srcMetadata.Size > multipartThreshold {
+		return s.copyLargeObjectCrossRegion(ctx, dstClient, srcBucket, srcKey, dstRegion, dstBucket, dstKey, srcMetadata.Size)
+	}
+
+	// For smaller objects, use simple copy
+	return s.copySmallObjectCrossRegion(ctx, dstClient, srcBucket, srcKey, dstRegion, dstBucket, dstKey)
+}
+
+// copySmallObjectCrossRegion copies objects smaller than 5GB using simple PUT with x-amz-copy-source
+func (s *StorageService) copySmallObjectCrossRegion(ctx context.Context, dstClient *AWSClient, srcBucket, srcKey, dstRegion, dstBucket, dstKey string) error {
+	endpoint := fmt.Sprintf("/%s/%s", dstBucket, dstKey)
+
+	// URL encode the copy source path
+	copySource := fmt.Sprintf("/%s/%s", srcBucket, srcKey)
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", dstRegion, endpoint), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set the copy source header - this tells S3 to copy from another location
+	req.Header.Set("x-amz-copy-source", copySource)
+	req.Header.Set("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+
+	if err := dstClient.signRequest(req, nil); err != nil {
+		return fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := dstClient.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to copy object: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		cleanError := parseS3Error(responseBody)
+		return fmt.Errorf("CopyObject cross-region failed: %s", cleanError)
+	}
+
+	return nil
+}
+
+// copyLargeObjectCrossRegion copies objects larger than 5GB using multipart copy
+func (s *StorageService) copyLargeObjectCrossRegion(ctx context.Context, dstClient *AWSClient, srcBucket, srcKey, dstRegion, dstBucket, dstKey string, objectSize int64) error {
+	// Part size: 100MB for large objects
+	const partSize int64 = 100 * 1024 * 1024
+
+	// Calculate number of parts
+	numParts := (objectSize + partSize - 1) / partSize
+
+	// Initiate multipart upload
+	uploadID, err := s.initiateMultipartUpload(dstClient, dstRegion, dstBucket, dstKey)
+	if err != nil {
+		return fmt.Errorf("failed to initiate multipart upload: %w", err)
+	}
+
+	// Copy parts
+	var completedParts []completedPart
+	copySource := fmt.Sprintf("/%s/%s", srcBucket, srcKey)
+
+	for partNum := int64(1); partNum <= numParts; partNum++ {
+		startByte := (partNum - 1) * partSize
+		endByte := startByte + partSize - 1
+		if endByte >= objectSize {
+			endByte = objectSize - 1
+		}
+
+		etag, err := s.uploadPartCopy(dstClient, dstRegion, dstBucket, dstKey, uploadID, int(partNum), copySource, startByte, endByte)
+		if err != nil {
+			// Abort multipart upload on failure
+			s.abortMultipartUpload(dstClient, dstRegion, dstBucket, dstKey, uploadID)
+			return fmt.Errorf("failed to copy part %d: %w", partNum, err)
+		}
+
+		completedParts = append(completedParts, completedPart{
+			PartNumber: int(partNum),
+			ETag:       etag,
+		})
+	}
+
+	// Complete multipart upload
+	if err := s.completeMultipartUpload(dstClient, dstRegion, dstBucket, dstKey, uploadID, completedParts); err != nil {
+		s.abortMultipartUpload(dstClient, dstRegion, dstBucket, dstKey, uploadID)
+		return fmt.Errorf("failed to complete multipart upload: %w", err)
+	}
+
+	return nil
+}
+
+// completedPart represents a completed part for multipart upload
+type completedPart struct {
+	PartNumber int
+	ETag       string
+}
+
+// initiateMultipartUpload starts a multipart upload and returns the upload ID
+func (s *StorageService) initiateMultipartUpload(client *AWSClient, region, bucket, key string) (string, error) {
+	endpoint := fmt.Sprintf("/%s/%s", bucket, key)
+	params := map[string]string{"uploads": ""}
+
+	req, err := http.NewRequest("POST", fmt.Sprintf("https://s3.%s.amazonaws.com%s?uploads", region, endpoint), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+
+	if err := client.signRequest(req, nil); err != nil {
+		return "", fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := client.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return "", fmt.Errorf("InitiateMultipartUpload failed: %s", parseS3Error(responseBody))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+		UploadId string   `xml:"UploadId"`
+	}
+	if err := xml.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Suppress unused variable warning for params
+	_ = params
+
+	return result.UploadId, nil
+}
+
+// uploadPartCopy copies a part from source to destination
+func (s *StorageService) uploadPartCopy(client *AWSClient, region, bucket, key, uploadID string, partNumber int, copySource string, startByte, endByte int64) (string, error) {
+	endpoint := fmt.Sprintf("/%s/%s", bucket, key)
+	urlStr := fmt.Sprintf("https://s3.%s.amazonaws.com%s?partNumber=%d&uploadId=%s", region, endpoint, partNumber, uploadID)
+
+	req, err := http.NewRequest("PUT", urlStr, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("x-amz-copy-source", copySource)
+	req.Header.Set("x-amz-copy-source-range", fmt.Sprintf("bytes=%d-%d", startByte, endByte))
+	req.Header.Set("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+
+	if err := client.signRequest(req, nil); err != nil {
+		return "", fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := client.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return "", fmt.Errorf("UploadPartCopy failed: %s", parseS3Error(responseBody))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		XMLName xml.Name `xml:"CopyPartResult"`
+		ETag    string   `xml:"ETag"`
+	}
+	if err := xml.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return result.ETag, nil
+}
+
+// completeMultipartUpload completes a multipart upload
+func (s *StorageService) completeMultipartUpload(client *AWSClient, region, bucket, key, uploadID string, parts []completedPart) error {
+	endpoint := fmt.Sprintf("/%s/%s", bucket, key)
+	urlStr := fmt.Sprintf("https://s3.%s.amazonaws.com%s?uploadId=%s", region, endpoint, uploadID)
+
+	// Build completion XML
+	var xmlParts strings.Builder
+	xmlParts.WriteString("<CompleteMultipartUpload>")
+	for _, part := range parts {
+		xmlParts.WriteString(fmt.Sprintf("<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>", part.PartNumber, part.ETag))
+	}
+	xmlParts.WriteString("</CompleteMultipartUpload>")
+
+	body := []byte(xmlParts.String())
+
+	req, err := http.NewRequest("POST", urlStr, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/xml")
+	payloadHash := fmt.Sprintf("%x", sha256.Sum256(body))
+	req.Header.Set("x-amz-content-sha256", payloadHash)
+
+	if err := client.signRequest(req, body); err != nil {
+		return fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := client.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return fmt.Errorf("CompleteMultipartUpload failed: %s", parseS3Error(responseBody))
+	}
+
+	return nil
+}
+
+// abortMultipartUpload aborts a multipart upload
+func (s *StorageService) abortMultipartUpload(client *AWSClient, region, bucket, key, uploadID string) error {
+	endpoint := fmt.Sprintf("/%s/%s", bucket, key)
+	urlStr := fmt.Sprintf("https://s3.%s.amazonaws.com%s?uploadId=%s", region, endpoint, uploadID)
+
+	req, err := http.NewRequest("DELETE", urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+
+	if err := client.signRequest(req, nil); err != nil {
+		return fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := client.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
+// CopyBucketCrossRegion copies all objects from source bucket to destination bucket in a different region
+func (s *StorageService) CopyBucketCrossRegion(ctx context.Context, srcBucket, dstRegion, dstBucket, prefix string, progress chan<- *provider.CrossRegionCopyProgress) error {
+	startTime := time.Now()
+
+	// Get source bucket region
+	srcRegion, err := s.GetBucketRegion(ctx, srcBucket)
+	if err != nil {
+		srcRegion = s.provider.region
+	}
+
+	// Send initial progress
+	if progress != nil {
+		progress <- &provider.CrossRegionCopyProgress{
+			SourceBucket: srcBucket,
+			SourceRegion: srcRegion,
+			DestBucket:   dstBucket,
+			DestRegion:   dstRegion,
+			Status:       "preparing",
+			StartTime:    startTime,
+		}
+	}
+
+	// List all objects in source bucket
+	objects, err := s.ListObjectsRecursive(ctx, srcBucket, prefix)
+	if err != nil {
+		if progress != nil {
+			progress <- &provider.CrossRegionCopyProgress{
+				Status: "failed",
+				Error:  fmt.Errorf("failed to list source objects: %w", err),
+			}
+		}
+		return fmt.Errorf("failed to list source objects: %w", err)
+	}
+
+	// Calculate total size
+	var totalBytes int64
+	var totalObjects int64
+	for _, obj := range objects {
+		if !obj.IsPrefix {
+			totalBytes += obj.Size
+			totalObjects++
+		}
+	}
+
+	if progress != nil {
+		progress <- &provider.CrossRegionCopyProgress{
+			SourceBucket:    srcBucket,
+			SourceRegion:    srcRegion,
+			DestBucket:      dstBucket,
+			DestRegion:      dstRegion,
+			TotalObjects:    totalObjects,
+			TotalBytes:      totalBytes,
+			Status:          "copying",
+			StartTime:       startTime,
+			PercentComplete: 0,
+		}
+	}
+
+	// Ensure destination bucket exists
+	dstClient, err := NewAWSClient(dstRegion, "s3")
+	if err != nil {
+		if progress != nil {
+			progress <- &provider.CrossRegionCopyProgress{
+				Status: "failed",
+				Error:  fmt.Errorf("failed to create destination client: %w", err),
+			}
+		}
+		return fmt.Errorf("failed to create destination client: %w", err)
+	}
+
+	// Try to create destination bucket (ignore error if it already exists)
+	err = s.createBucketInRegion(dstClient, dstRegion, dstBucket)
+	if err != nil && !strings.Contains(err.Error(), "BucketAlreadyOwnedByYou") && !strings.Contains(err.Error(), "BucketAlreadyExists") {
+		if progress != nil {
+			progress <- &provider.CrossRegionCopyProgress{
+				Status: "failed",
+				Error:  fmt.Errorf("failed to create destination bucket: %w", err),
+			}
+		}
+		return fmt.Errorf("failed to create destination bucket: %w", err)
+	}
+
+	// Copy objects concurrently
+	var copiedObjects, copiedBytes int64
+	var failedObjects int64
+	var failedKeys []string
+	var mu sync.Mutex
+
+	// Use worker pool for concurrent copies
+	const maxWorkers = 10
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
+	for _, obj := range objects {
+		if obj.IsPrefix {
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{} // Acquire semaphore
+
+		go func(obj *provider.S3ObjectInfo) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore
+
+			// Determine destination key
+			dstKey := obj.Key
+			if prefix != "" {
+				dstKey = strings.TrimPrefix(obj.Key, prefix)
+			}
+
+			// Send progress update
+			if progress != nil {
+				mu.Lock()
+				progress <- &provider.CrossRegionCopyProgress{
+					SourceBucket:    srcBucket,
+					SourceRegion:    srcRegion,
+					DestBucket:      dstBucket,
+					DestRegion:      dstRegion,
+					TotalObjects:    totalObjects,
+					CopiedObjects:   copiedObjects,
+					FailedObjects:   failedObjects,
+					TotalBytes:      totalBytes,
+					CopiedBytes:     copiedBytes,
+					CurrentObject:   obj.Key,
+					Status:          "copying",
+					StartTime:       startTime,
+					PercentComplete: float64(copiedObjects) / float64(totalObjects) * 100,
+				}
+				mu.Unlock()
+			}
+
+			// Copy the object
+			err := s.CopyObjectCrossRegion(ctx, srcBucket, obj.Key, dstRegion, dstBucket, dstKey)
+
+			mu.Lock()
+			if err != nil {
+				failedObjects++
+				failedKeys = append(failedKeys, obj.Key)
+			} else {
+				copiedObjects++
+				copiedBytes += obj.Size
+			}
+			mu.Unlock()
+		}(obj)
+	}
+
+	wg.Wait()
+
+	// Send final progress
+	status := "complete"
+	var finalErr error
+	if failedObjects > 0 {
+		if copiedObjects == 0 {
+			status = "failed"
+			finalErr = fmt.Errorf("all %d objects failed to copy", failedObjects)
+		} else {
+			status = "complete"
+			finalErr = fmt.Errorf("%d objects failed to copy", failedObjects)
+		}
+	}
+
+	elapsed := time.Since(startTime)
+	bytesPerSecond := float64(copiedBytes) / elapsed.Seconds()
+
+	if progress != nil {
+		progress <- &provider.CrossRegionCopyProgress{
+			SourceBucket:    srcBucket,
+			SourceRegion:    srcRegion,
+			DestBucket:      dstBucket,
+			DestRegion:      dstRegion,
+			TotalObjects:    totalObjects,
+			CopiedObjects:   copiedObjects,
+			FailedObjects:   failedObjects,
+			TotalBytes:      totalBytes,
+			CopiedBytes:     copiedBytes,
+			Status:          status,
+			StartTime:       startTime,
+			PercentComplete: 100,
+			BytesPerSecond:  bytesPerSecond,
+			Error:           finalErr,
+			FailedKeys:      failedKeys,
+		}
+	}
+
+	return finalErr
+}
+
+// createBucketInRegion creates a bucket in a specific region
+func (s *StorageService) createBucketInRegion(client *AWSClient, region, bucketName string) error {
+	endpoint := fmt.Sprintf("/%s", bucketName)
+
+	var body []byte
+	if region != "us-east-1" {
+		locationXML := fmt.Sprintf(`<CreateBucketConfiguration><LocationConstraint>%s</LocationConstraint></CreateBucketConfiguration>`, region)
+		body = []byte(locationXML)
+	}
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", region, endpoint), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if len(body) > 0 {
+		req.Header.Set("Content-Type", "application/xml")
+		payloadHash := fmt.Sprintf("%x", sha256.Sum256(body))
+		req.Header.Set("x-amz-content-sha256", payloadHash)
+	} else {
+		req.Header.Set("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+	}
+
+	if err := client.signRequest(req, body); err != nil {
+		return fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	resp, err := client.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		responseBody, _ := ReadResponse(resp)
+		return fmt.Errorf("CreateBucket failed: %s", parseS3Error(responseBody))
+	}
+
+	return nil
 }

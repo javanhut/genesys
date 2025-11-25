@@ -394,6 +394,26 @@ type TransferProgress struct {
 	Error            error
 }
 
+// CrossRegionCopyProgress tracks cross-region bucket copy progress
+type CrossRegionCopyProgress struct {
+	SourceBucket    string
+	SourceRegion    string
+	DestBucket      string
+	DestRegion      string
+	TotalObjects    int64
+	CopiedObjects   int64
+	FailedObjects   int64
+	TotalBytes      int64
+	CopiedBytes     int64
+	CurrentObject   string
+	PercentComplete float64
+	BytesPerSecond  float64
+	StartTime       time.Time
+	Status          string // "preparing", "copying", "complete", "failed"
+	Error           error
+	FailedKeys      []string
+}
+
 // CloudWatch Logs
 
 // LogEvent represents a CloudWatch log event
