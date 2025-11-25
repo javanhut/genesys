@@ -271,6 +271,22 @@ echo "All uploads complete"
 
 ## Troubleshooting
 
+### Cross-Region Bucket Access
+
+Genesys automatically handles buckets in different regions. When accessing a bucket, the tool first determines the bucket's region and creates an appropriately configured client. This prevents `PermanentRedirect` errors that occur when trying to access a bucket using the wrong regional endpoint.
+
+**How it works**:
+1. Genesys queries the bucket's location using the `GetBucketLocation` API
+2. Creates an S3 client configured for that specific region
+3. Performs the requested operation using the correct regional endpoint
+
+This is handled automatically for all S3 operations including:
+- Listing objects
+- Uploading/downloading files
+- Deleting objects
+- Copying objects
+- Bucket operations (delete, empty)
+
 ### "Failed to upload file"
 
 **Solutions**:

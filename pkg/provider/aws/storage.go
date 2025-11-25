@@ -30,6 +30,25 @@ func NewStorageService(p *AWSProvider) *StorageService {
 	}
 }
 
+// createClientForBucket creates an S3 client configured for the bucket's region.
+// This is necessary because S3 buckets must be accessed using their specific regional endpoint.
+// Accessing a bucket in a different region results in a PermanentRedirect error.
+func (s *StorageService) createClientForBucket(ctx context.Context, bucketName string) (*AWSClient, error) {
+	// First, get the bucket's region
+	bucketRegion, err := s.GetBucketRegion(ctx, bucketName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine bucket region: %w", err)
+	}
+
+	// Create a client for the bucket's region
+	client, err := NewAWSClient(bucketRegion, "s3")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 client for region %s: %w", bucketRegion, err)
+	}
+
+	return client, nil
+}
+
 // S3 API response structures
 type ListAllMyBucketsResult struct {
 	XMLName xml.Name `xml:"ListAllMyBucketsResult"`
@@ -170,7 +189,8 @@ func (s *StorageService) DeleteBucket(ctx context.Context, name string) error {
 
 // DeleteBucketWithOptions deletes a bucket with advanced options
 func (s *StorageService) DeleteBucketWithOptions(ctx context.Context, name string, forceDelete bool) error {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, name)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -537,7 +557,8 @@ func (s *StorageService) EmptyBucket(ctx context.Context, bucketName string) err
 
 // EmptyBucketWithOptions removes all objects and versions from a bucket with advanced options
 func (s *StorageService) EmptyBucketWithOptions(ctx context.Context, bucketName string, forceDelete bool) error {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -826,7 +847,8 @@ func (s *StorageService) deleteObjectBatch(client *AWSClient, bucketName string,
 
 // ListObjects lists objects in a bucket with optional prefix and max keys
 func (s *StorageService) ListObjects(ctx context.Context, bucketName, prefix string, maxKeys int) ([]*provider.S3ObjectInfo, error) {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -896,7 +918,8 @@ func (s *StorageService) ListObjects(ctx context.Context, bucketName, prefix str
 
 // ListObjectsRecursive lists all objects recursively in a bucket with optional prefix
 func (s *StorageService) ListObjectsRecursive(ctx context.Context, bucketName, prefix string) ([]*provider.S3ObjectInfo, error) {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -966,7 +989,8 @@ func (s *StorageService) ListObjectsRecursive(ctx context.Context, bucketName, p
 
 // GetObject retrieves an object's content from S3
 func (s *StorageService) GetObject(ctx context.Context, bucketName, key string) ([]byte, error) {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -989,14 +1013,15 @@ func (s *StorageService) GetObject(ctx context.Context, bucketName, key string) 
 
 // GetObjectMetadata retrieves metadata about an S3 object
 func (s *StorageService) GetObjectMetadata(ctx context.Context, bucketName, key string) (*provider.S3ObjectMetadata, error) {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("/%s/%s", bucketName, key)
 
-	req, err := http.NewRequest("HEAD", fmt.Sprintf("https://s3.%s.amazonaws.com%s", s.provider.region, endpoint), nil)
+	req, err := http.NewRequest("HEAD", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1053,14 +1078,15 @@ func (s *StorageService) GetObjectMetadata(ctx context.Context, bucketName, key 
 
 // PutObject uploads data to S3
 func (s *StorageService) PutObject(ctx context.Context, bucketName, key string, data []byte, contentType string) error {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("/%s/%s", bucketName, key)
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", s.provider.region, endpoint), bytes.NewReader(data))
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -1094,7 +1120,8 @@ func (s *StorageService) PutObject(ctx context.Context, bucketName, key string, 
 
 // DeleteObject deletes a single object from S3
 func (s *StorageService) DeleteObject(ctx context.Context, bucketName, key string) error {
-	client, err := s.provider.CreateClient("s3")
+	// Use bucket-specific client to handle cross-region bucket access
+	client, err := s.createClientForBucket(ctx, bucketName)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -1117,7 +1144,8 @@ func (s *StorageService) DeleteObject(ctx context.Context, bucketName, key strin
 
 // CopyObject copies an object within S3
 func (s *StorageService) CopyObject(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) error {
-	client, err := s.provider.CreateClient("s3")
+	// Use destination bucket's region for the client
+	client, err := s.createClientForBucket(ctx, dstBucket)
 	if err != nil {
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
@@ -1125,7 +1153,7 @@ func (s *StorageService) CopyObject(ctx context.Context, srcBucket, srcKey, dstB
 	endpoint := fmt.Sprintf("/%s/%s", dstBucket, dstKey)
 	copySource := fmt.Sprintf("/%s/%s", srcBucket, srcKey)
 
-	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", s.provider.region, endpoint), nil)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
