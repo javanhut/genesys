@@ -180,8 +180,35 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 		"InstanceType": instanceType,
 	}
 
+	// Add key pair if specified (required for SSH access)
+	if config.KeyPair != "" {
+		params["KeyName"] = config.KeyPair
+	}
+
+	// Configure network interface for public IP and security groups
+	// Using NetworkInterfaces allows us to control public IP assignment
+	// Note: When using NetworkInterfaces, SecurityGroupId cannot be specified at top level
+	params["NetworkInterface.1.DeviceIndex"] = "0"
+
+	// Associate public IP if requested (critical for SSH access)
+	if config.PublicIP {
+		params["NetworkInterface.1.AssociatePublicIpAddress"] = "true"
+	} else {
+		params["NetworkInterface.1.AssociatePublicIpAddress"] = "false"
+	}
+
+	// Add subnet if specified
+	if config.Subnet != "" {
+		params["NetworkInterface.1.SubnetId"] = config.Subnet
+	}
+
+	// Add security groups to network interface (not at instance level when using NetworkInterfaces)
+	for i, sg := range config.SecurityGroups {
+		params[fmt.Sprintf("NetworkInterface.1.SecurityGroupId.%d", i+1)] = sg
+	}
+
 	// Add tags (always include Name tag, so we always have at least one tag)
-	params[fmt.Sprintf("TagSpecification.1.ResourceType")] = "instance"
+	params["TagSpecification.1.ResourceType"] = "instance"
 	tagIndex := 1
 
 	// Add user-defined tags
@@ -216,14 +243,10 @@ func (c *ComputeService) CreateInstance(ctx context.Context, config *provider.In
 
 	var runResp RunInstancesResponse
 	if err := xml.Unmarshal(body, &runResp); err != nil {
-		// Debug: print the raw response to understand the structure
-		fmt.Printf("DEBUG: Failed to parse RunInstances response. Raw response:\n%s\n", string(body))
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(runResp.Instances.Items) == 0 {
-		// Debug: print what we actually got
-		fmt.Printf("DEBUG: RunInstances response parsed but no instances found. Response structure: %+v\n", runResp)
 		return nil, fmt.Errorf("no instances created - response parsed but instances list is empty")
 	}
 
@@ -914,5 +937,201 @@ func (c *ComputeService) reverseMapInstanceType(awsType string) string {
 		return "xlarge"
 	default:
 		return strings.TrimPrefix(awsType, "t3.")
+	}
+}
+
+// InstanceStatusCheckResponse represents the EC2 DescribeInstanceStatus API response
+type InstanceStatusCheckResponse struct {
+	XMLName          xml.Name `xml:"DescribeInstanceStatusResponse"`
+	InstanceStatuses struct {
+		Items []struct {
+			InstanceId    string `xml:"instanceId"`
+			InstanceState struct {
+				Name string `xml:"name"`
+			} `xml:"instanceState"`
+			SystemStatus struct {
+				Status string `xml:"status"`
+			} `xml:"systemStatus"`
+			InstanceStatus struct {
+				Status string `xml:"status"`
+			} `xml:"instanceStatus"`
+		} `xml:"item"`
+	} `xml:"instanceStatusSet"`
+}
+
+// InstanceStatusResult contains the status check results for an instance
+type InstanceStatusResult struct {
+	InstanceId     string
+	InstanceState  string
+	SystemStatus   string
+	InstanceStatus string
+	IsReady        bool
+}
+
+// GetInstanceStatus retrieves the status checks for an instance
+func (c *ComputeService) GetInstanceStatus(ctx context.Context, instanceId string) (*InstanceStatusResult, error) {
+	client, err := c.provider.CreateClient("ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":       "DescribeInstanceStatus",
+		"Version":      "2016-11-15",
+		"InstanceId.1": instanceId,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe instance status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeInstanceStatus failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var statusResp InstanceStatusCheckResponse
+	if err := xml.Unmarshal(body, &statusResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// If no status returned, instance may not be running yet
+	if len(statusResp.InstanceStatuses.Items) == 0 {
+		return &InstanceStatusResult{
+			InstanceId:     instanceId,
+			InstanceState:  "pending",
+			SystemStatus:   "initializing",
+			InstanceStatus: "initializing",
+			IsReady:        false,
+		}, nil
+	}
+
+	status := statusResp.InstanceStatuses.Items[0]
+	result := &InstanceStatusResult{
+		InstanceId:     status.InstanceId,
+		InstanceState:  status.InstanceState.Name,
+		SystemStatus:   status.SystemStatus.Status,
+		InstanceStatus: status.InstanceStatus.Status,
+		IsReady:        status.InstanceState.Name == "running" && status.SystemStatus.Status == "ok" && status.InstanceStatus.Status == "ok",
+	}
+
+	return result, nil
+}
+
+// GetInstanceStatusInRegion retrieves the status checks for an instance in a specific region
+func (c *ComputeService) GetInstanceStatusInRegion(ctx context.Context, instanceId, region string) (*InstanceStatusResult, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":       "DescribeInstanceStatus",
+		"Version":      "2016-11-15",
+		"InstanceId.1": instanceId,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe instance status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		cleanError := parseEC2Error(body)
+		return nil, fmt.Errorf("DescribeInstanceStatus failed: %s", cleanError)
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var statusResp InstanceStatusCheckResponse
+	if err := xml.Unmarshal(body, &statusResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// If no status returned, instance may not be running yet
+	if len(statusResp.InstanceStatuses.Items) == 0 {
+		return &InstanceStatusResult{
+			InstanceId:     instanceId,
+			InstanceState:  "pending",
+			SystemStatus:   "initializing",
+			InstanceStatus: "initializing",
+			IsReady:        false,
+		}, nil
+	}
+
+	status := statusResp.InstanceStatuses.Items[0]
+	result := &InstanceStatusResult{
+		InstanceId:     status.InstanceId,
+		InstanceState:  status.InstanceState.Name,
+		SystemStatus:   status.SystemStatus.Status,
+		InstanceStatus: status.InstanceStatus.Status,
+		IsReady:        status.InstanceState.Name == "running" && status.SystemStatus.Status == "ok" && status.InstanceStatus.Status == "ok",
+	}
+
+	return result, nil
+}
+
+// WaitForInstanceReady waits for an instance to pass status checks with a timeout
+func (c *ComputeService) WaitForInstanceReady(ctx context.Context, instanceId string, timeoutSeconds int) error {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(time.Duration(timeoutSeconds) * time.Second)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for instance %s to be ready", instanceId)
+		case <-ticker.C:
+			status, err := c.GetInstanceStatus(ctx, instanceId)
+			if err != nil {
+				// Continue waiting on transient errors
+				continue
+			}
+			if status.IsReady {
+				return nil
+			}
+		}
+	}
+}
+
+// WaitForInstanceReadyInRegion waits for an instance in a specific region to pass status checks
+func (c *ComputeService) WaitForInstanceReadyInRegion(ctx context.Context, instanceId, region string, timeoutSeconds int) error {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(time.Duration(timeoutSeconds) * time.Second)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for instance %s to be ready", instanceId)
+		case <-ticker.C:
+			status, err := c.GetInstanceStatusInRegion(ctx, instanceId, region)
+			if err != nil {
+				// Continue waiting on transient errors
+				continue
+			}
+			if status.IsReady {
+				return nil
+			}
+		}
 	}
 }

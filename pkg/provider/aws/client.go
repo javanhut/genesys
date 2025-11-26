@@ -353,8 +353,9 @@ func (c *AWSClient) requestInternal(method, endpoint string, params map[string]s
 			values.Add(k, v)
 		}
 
-		// For IAM/STS POST requests, put parameters in the body, otherwise in query string
-		if (c.Service == "iam" || c.Service == "sts") && method == "POST" {
+		// For IAM/STS/EC2 POST requests, put parameters in the body
+		// EC2 Query API expects form-encoded parameters in the POST body
+		if (c.Service == "iam" || c.Service == "sts" || c.Service == "ec2") && method == "POST" {
 			requestBody = []byte(values.Encode())
 		} else {
 			baseURL += "?" + values.Encode()
@@ -386,8 +387,8 @@ func (c *AWSClient) requestInternal(method, endpoint string, params map[string]s
 			md5sum := md5.Sum(body)
 			req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(md5sum[:]))
 		}
-	} else if c.Service == "iam" || c.Service == "sts" {
-		// IAM and STS use form encoding for POST requests
+	} else if c.Service == "iam" || c.Service == "sts" || c.Service == "ec2" {
+		// IAM, STS, and EC2 use form encoding for POST requests (Query API)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
 	} else {
 		req.Header.Set("Content-Type", "application/x-amz-json-1.1")

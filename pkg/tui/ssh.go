@@ -278,38 +278,10 @@ func guessDefaultUser(instance *provider.Instance) string {
 		return "ec2-user"
 	}
 
-	// Check ImageId for common patterns
-	if imageID, ok := instance.ProviderData["ImageId"].(string); ok {
-		imageIDLower := strings.ToLower(imageID)
-		if strings.Contains(imageIDLower, "ubuntu") {
-			return "ubuntu"
-		}
-	}
-
-	// Check image name/description if available
-	if imageName, ok := instance.ProviderData["ImageName"].(string); ok {
-		imageNameLower := strings.ToLower(imageName)
-
-		if strings.Contains(imageNameLower, "ubuntu") {
-			return "ubuntu"
-		}
-		if strings.Contains(imageNameLower, "debian") {
-			return "admin"
-		}
-		if strings.Contains(imageNameLower, "centos") {
-			return "centos"
-		}
-		if strings.Contains(imageNameLower, "rhel") || strings.Contains(imageNameLower, "red hat") {
-			return "ec2-user"
-		}
-		if strings.Contains(imageNameLower, "fedora") {
-			return "fedora"
-		}
-		if strings.Contains(imageNameLower, "suse") {
-			return "ec2-user"
-		}
-		if strings.Contains(imageNameLower, "bitnami") {
-			return "bitnami"
+	// Check image name/description if available (most reliable)
+	if imageName, ok := instance.ProviderData["ImageName"].(string); ok && imageName != "" {
+		if user := detectUserFromImageName(imageName); user != "" {
+			return user
 		}
 	}
 
@@ -317,6 +289,28 @@ func guessDefaultUser(instance *provider.Instance) string {
 	if platform, ok := instance.ProviderData["Platform"].(string); ok {
 		if strings.ToLower(platform) == "windows" {
 			return "Administrator"
+		}
+	}
+
+	// If we have an ImageId but no ImageName, try to look up the AMI details
+	if imageID, ok := instance.ProviderData["ImageId"].(string); ok && imageID != "" {
+		// Get region from provider data
+		region := "us-east-1"
+		if r, ok := instance.ProviderData["Region"].(string); ok && r != "" {
+			region = r
+		}
+
+		// Try to look up AMI details
+		ctx := context.Background()
+		if amiDetails, err := aws.GetAMIDetailsInRegion(ctx, imageID, region); err == nil {
+			// Check the AMI name
+			if user := detectUserFromImageName(amiDetails.Name); user != "" {
+				return user
+			}
+			// Check the AMI description
+			if user := detectUserFromImageName(amiDetails.Description); user != "" {
+				return user
+			}
 		}
 	}
 
@@ -342,6 +336,42 @@ func guessDefaultUser(instance *provider.Instance) string {
 
 	// Default to ec2-user (Amazon Linux)
 	return "ec2-user"
+}
+
+// detectUserFromImageName extracts the default SSH user from an image name
+func detectUserFromImageName(imageName string) string {
+	if imageName == "" {
+		return ""
+	}
+
+	imageNameLower := strings.ToLower(imageName)
+
+	if strings.Contains(imageNameLower, "ubuntu") {
+		return "ubuntu"
+	}
+	if strings.Contains(imageNameLower, "debian") {
+		return "admin"
+	}
+	if strings.Contains(imageNameLower, "centos") {
+		return "centos"
+	}
+	if strings.Contains(imageNameLower, "rhel") || strings.Contains(imageNameLower, "red hat") {
+		return "ec2-user"
+	}
+	if strings.Contains(imageNameLower, "fedora") {
+		return "fedora"
+	}
+	if strings.Contains(imageNameLower, "suse") {
+		return "ec2-user"
+	}
+	if strings.Contains(imageNameLower, "bitnami") {
+		return "bitnami"
+	}
+	if strings.Contains(imageNameLower, "amazon") || strings.Contains(imageNameLower, "amzn") {
+		return "ec2-user"
+	}
+
+	return ""
 }
 
 // findDefaultKeyPath attempts to find a default SSH key path
@@ -390,6 +420,87 @@ func expandPath(path string) string {
 	return path
 }
 
+// SSHPreflightResult contains the results of SSH pre-flight checks
+type SSHPreflightResult struct {
+	HasPublicIP   bool
+	HasKeyPair    bool
+	HasSSHRule    bool
+	InstanceReady bool
+	PublicIP      string
+	KeyName       string
+	SSHCidrs      []string
+	StatusMessage string
+	Warnings      []string
+}
+
+// PerformSSHPreflightChecks performs comprehensive pre-flight checks before SSH
+func PerformSSHPreflightChecks(appCtx *AppContext, instance *provider.Instance) *SSHPreflightResult {
+	result := &SSHPreflightResult{
+		Warnings: []string{},
+	}
+
+	// Check for public IP
+	if instance.PublicIP != "" {
+		result.HasPublicIP = true
+		result.PublicIP = instance.PublicIP
+	} else if instance.PrivateIP != "" {
+		result.Warnings = append(result.Warnings, "No public IP - can only connect from within VPC")
+		result.PublicIP = instance.PrivateIP
+	}
+
+	// Check for key pair
+	if instance.ProviderData != nil {
+		if keyName, ok := instance.ProviderData["KeyName"].(string); ok && keyName != "" {
+			result.HasKeyPair = true
+			result.KeyName = keyName
+		} else {
+			result.Warnings = append(result.Warnings, "No key pair assigned - SSH authentication will fail")
+		}
+	}
+
+	// Check security group SSH rules
+	sgInfos, err := CheckSecurityGroupSSH(appCtx, instance)
+	if err == nil && len(sgInfos) > 0 {
+		for _, sg := range sgInfos {
+			if sg.HasSSHRule {
+				result.HasSSHRule = true
+				result.SSHCidrs = append(result.SSHCidrs, sg.SSHCidrs...)
+			}
+		}
+	}
+
+	if !result.HasSSHRule {
+		result.Warnings = append(result.Warnings, "No SSH rule (port 22) in security groups - connection will be blocked")
+	}
+
+	// Check instance status
+	if instance.State == "running" {
+		result.InstanceReady = true
+	}
+
+	// Build status message
+	if result.HasPublicIP && result.HasKeyPair && result.HasSSHRule && result.InstanceReady {
+		result.StatusMessage = "All pre-flight checks passed"
+	} else {
+		var issues []string
+		if !result.HasPublicIP {
+			issues = append(issues, "no public IP")
+		}
+		if !result.HasKeyPair {
+			issues = append(issues, "no key pair")
+		}
+		if !result.HasSSHRule {
+			issues = append(issues, "no SSH security rule")
+		}
+		if !result.InstanceReady {
+			issues = append(issues, "instance not ready")
+		}
+		result.StatusMessage = fmt.Sprintf("Issues found: %s", strings.Join(issues, ", "))
+	}
+
+	return result
+}
+
 // ShowSSHDialog displays the SSH connection dialog for an instance
 func ShowSSHDialog(appCtx *AppContext, instance *provider.Instance) {
 	// Check if instance has an IP address
@@ -416,6 +527,46 @@ func ShowSSHDialog(appCtx *AppContext, instance *provider.Instance) {
 		return
 	}
 
+	// Perform pre-flight checks
+	preflight := PerformSSHPreflightChecks(appCtx, instance)
+
+	// If there are critical issues, show warning with option to continue
+	if !preflight.HasSSHRule || !preflight.HasKeyPair {
+		var warningText string
+		if !preflight.HasKeyPair && !preflight.HasSSHRule {
+			warningText = "WARNING: This instance has no key pair assigned and no SSH security group rule.\n\nSSH connection will fail.\n\nUse 'SSH Rules' to add a rule, or re-launch with a key pair."
+		} else if !preflight.HasKeyPair {
+			warningText = "WARNING: This instance has no key pair assigned.\n\nSSH authentication will fail.\n\nYou must re-launch the instance with a key pair to enable SSH."
+		} else {
+			warningText = "WARNING: Security groups do not allow SSH (port 22).\n\nConnection will be blocked.\n\nWould you like to add an SSH rule now?"
+		}
+
+		modal := tview.NewModal().
+			SetText(warningText).
+			AddButtons([]string{"Add SSH Rule", "Continue Anyway", "Cancel"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				appCtx.Pages.RemovePage("ssh-warning")
+				switch buttonIndex {
+				case 0: // Add SSH Rule
+					ShowAddSSHRuleDialog(appCtx, instance, func() {
+						// After adding rule, show SSH dialog again
+						ShowSSHDialog(appCtx, instance)
+					})
+				case 1: // Continue Anyway
+					showSSHConnectionDialog(appCtx, instance, preflight)
+				case 2: // Cancel
+					// Do nothing
+				}
+			})
+		appCtx.Pages.AddPage("ssh-warning", modal, true, true)
+		return
+	}
+
+	showSSHConnectionDialog(appCtx, instance, preflight)
+}
+
+// showSSHConnectionDialog shows the actual SSH connection dialog
+func showSSHConnectionDialog(appCtx *AppContext, instance *provider.Instance, preflight *SSHPreflightResult) {
 	dialog := NewSSHConnectionDialog(
 		appCtx,
 		instance,
@@ -553,7 +704,9 @@ func saveKeyPair(keyPair *aws.KeyPair) (string, error) {
 	}
 
 	// Write the private key with restrictive permissions (0600)
-	if err := os.WriteFile(keyPath, []byte(keyPair.KeyMaterial), 0600); err != nil {
+	// Ensure key material has proper formatting (trim whitespace and ensure trailing newline)
+	keyContent := strings.TrimSpace(keyPair.KeyMaterial) + "\n"
+	if err := os.WriteFile(keyPath, []byte(keyContent), 0600); err != nil {
 		return "", fmt.Errorf("failed to write key file: %w", err)
 	}
 

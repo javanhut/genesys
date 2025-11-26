@@ -263,28 +263,45 @@ genesys execute ec2-team-dev-template-*.toml
 
 Genesys implements security best practices automatically:
 
-- **Private Networking**: Instances created in private subnets by default
+- **Public IP Assignment**: Instances can be configured with public IPs for internet access
 - **Encryption**: EBS volumes encrypted with AES-256
-- **Security Groups**: Restrictive rules, SSH only from your IP
+- **Security Groups**: Automatic SSH security group creation with your IP
+- **Key Pair Management**: Create or select key pairs during instance creation
 - **IAM Integration**: Uses your existing AWS credentials securely
 - **Resource Tagging**: All resources tagged for management and compliance
+
+### SSH Access Configuration
+
+Genesys provides comprehensive SSH access setup during instance creation:
+
+1. **Key Pair Configuration**:
+   - Create new key pairs automatically (saved to ~/.ssh/)
+   - Select existing key pairs from your AWS account
+   - Key files are saved with proper 0600 permissions
+
+2. **Security Group Setup**:
+   - Automatic security group creation with SSH (port 22) enabled
+   - Option to restrict SSH to your current IP (most secure)
+   - Option to allow SSH from anywhere (0.0.0.0/0)
+   - Custom CIDR block support
+
+3. **Pre-flight Checks**:
+   - Validates public IP assignment before SSH attempts
+   - Checks security group rules for SSH access
+   - Verifies key pair configuration
+   - Waits for instance status checks to pass
 
 ### Additional Security Recommendations
 
 1. **SSH Key Management**:
-   ```bash
-   # Create EC2 key pair (do this separately)
-   aws ec2 create-key-pair --key-name my-dev-key --output text --query 'KeyMaterial' > my-dev-key.pem
-   chmod 400 my-dev-key.pem
-   
-   # Reference in security group configuration
-   # (Future: Genesys will support SSH key configuration)
-   ```
+   - Genesys automatically creates and saves key pairs to ~/.ssh/
+   - Key files are created with restrictive permissions (0600)
+   - Keep your private keys secure and backed up
 
 2. **Network Security**:
-   - Instances are private by default (secure)
-   - Use bastion hosts or VPN for SSH access
-   - Consider AWS Systems Manager Session Manager for secure access
+   - Use "my-ip" option to restrict SSH to your current IP
+   - For production, consider VPN or bastion host access
+   - Regularly review and update security group rules
 
 3. **Data Protection**:
    - EBS encryption enabled by default
@@ -333,6 +350,34 @@ genesys execute deletion ec2-dev-*.toml
 
 ## Troubleshooting
 
+### SSH Connection Issues
+
+**"Connection timed out"**
+- Verify instance has a public IP address assigned
+- Check security group allows SSH (port 22) from your IP
+- Ensure instance is in "running" state and status checks passed
+- Wait 2-3 minutes after launch for instance to be fully ready
+
+**"Permission denied (publickey)"**
+- Verify you're using the correct key pair file (.pem)
+- Check key file permissions: `chmod 600 ~/.ssh/your-key.pem`
+- Ensure the key pair matches the one assigned at instance launch
+- Verify you're using the correct username for the AMI:
+  - Ubuntu: `ubuntu`
+  - Amazon Linux: `ec2-user`
+  - Debian: `admin`
+  - CentOS: `centos` or `ec2-user`
+
+**"No route to host" or "Connection refused"**
+- Security group may not have SSH rule - use 's' key in TUI to add rule
+- Instance may be in a private subnet without public IP
+- Check that your IP hasn't changed (re-add SSH rule with current IP)
+
+**SSH Pre-flight Check Failures**
+- TUI shows warnings before connection if issues detected
+- Use "SSH Rules" button to add missing security group rules
+- Use "New Key" button to create key pair if missing
+
 ### Common Issues
 
 **"Instance name already exists"**
@@ -366,9 +411,11 @@ genesys execute ec2-instance-*.toml --dry-run
 # List existing instances
 genesys list resources --service compute --output json
 
-# AWS CLI verification
-aws ec2 describe-instances --output table
-aws sts get-caller-identity  # Verify credentials
+# Check SSH connectivity manually
+ssh -v -i ~/.ssh/your-key.pem ec2-user@<instance-public-ip>
+
+# Verify security group rules
+aws ec2 describe-security-groups --group-ids <sg-id>
 ```
 
 ## Integration with Other Services

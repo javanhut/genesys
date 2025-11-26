@@ -532,10 +532,13 @@ func executeEC2Config(ctx context.Context, configPath string) error {
 
 	// Create instance configuration
 	instanceConf := &providerTypes.InstanceConfig{
-		Name:  instanceResource.Name,
-		Type:  providerTypes.InstanceType(instanceResource.Type),
-		Image: instanceResource.Image,
-		Tags:  instanceResource.Tags,
+		Name:           instanceResource.Name,
+		Type:           providerTypes.InstanceType(instanceResource.Type),
+		Image:          instanceResource.Image,
+		KeyPair:        instanceResource.KeyPair,
+		SecurityGroups: instanceResource.SecurityGroups,
+		Tags:           instanceResource.Tags,
+		PublicIP:       instanceResource.PublicIP,
 	}
 
 	// Create instance

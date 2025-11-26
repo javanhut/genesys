@@ -380,6 +380,94 @@ func (r *AMIResolver) GetCacheStats() map[string]interface{} {
 	return stats
 }
 
+// GetAMIDetails retrieves details about an AMI by its ID
+func (r *AMIResolver) GetAMIDetails(ctx context.Context, amiID string) (*AMIImage, error) {
+	if !isValidAMIID(amiID) {
+		return nil, fmt.Errorf("invalid AMI ID: %s", amiID)
+	}
+
+	ec2Client, err := r.provider.CreateClient("ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":    "DescribeImages",
+		"ImageId.1": amiID,
+	}
+
+	resp, err := ec2Client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("DescribeImages failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return nil, fmt.Errorf("DescribeImages API error: %s", parseEC2Error(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read DescribeImages response: %w", err)
+	}
+
+	var descResp DescribeImagesResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return nil, fmt.Errorf("failed to parse DescribeImages response: %w", err)
+	}
+
+	if len(descResp.Images.Items) == 0 {
+		return nil, fmt.Errorf("AMI not found: %s", amiID)
+	}
+
+	return &descResp.Images.Items[0], nil
+}
+
+// GetAMIDetailsInRegion retrieves details about an AMI in a specific region
+func GetAMIDetailsInRegion(ctx context.Context, amiID, region string) (*AMIImage, error) {
+	if !isValidAMIID(amiID) {
+		return nil, fmt.Errorf("invalid AMI ID: %s", amiID)
+	}
+
+	ec2Client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":    "DescribeImages",
+		"ImageId.1": amiID,
+	}
+
+	resp, err := ec2Client.Request("POST", "/", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("DescribeImages failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return nil, fmt.Errorf("DescribeImages API error: %s", parseEC2Error(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read DescribeImages response: %w", err)
+	}
+
+	var descResp DescribeImagesResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return nil, fmt.Errorf("failed to parse DescribeImages response: %w", err)
+	}
+
+	if len(descResp.Images.Items) == 0 {
+		return nil, fmt.Errorf("AMI not found: %s", amiID)
+	}
+
+	return &descResp.Images.Items[0], nil
+}
+
 // AWS API Response structures
 
 // SSMGetParameterResponse represents SSM GetParameter API response

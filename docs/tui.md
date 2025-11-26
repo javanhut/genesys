@@ -679,9 +679,32 @@ The SSH connection uses these options for reliability:
 - Try connecting from the instance's private IP if on VPN
 
 **"Permission denied"**
-- Wrong username for the AMI type
+- Wrong username for the AMI type (genesys auto-detects based on AMI, but you can change it in the dialog)
 - Wrong key file for this instance
 - Key file has incorrect permissions (run: chmod 600 key.pem)
+
+**"no pubkey loaded" in debug output**
+- The key file format may be corrupted or invalid
+- Verify the key file starts with `-----BEGIN RSA PRIVATE KEY-----` or similar
+- Re-download or regenerate the key if needed
+
+### Default SSH Usernames by AMI Type
+
+Genesys automatically detects the correct SSH username based on the AMI:
+
+| AMI Type | Default Username |
+|----------|-----------------|
+| Ubuntu | ubuntu |
+| Amazon Linux / Amazon Linux 2023 | ec2-user |
+| CentOS | centos |
+| Debian | admin |
+| RHEL / Red Hat | ec2-user |
+| Fedora | fedora |
+| SUSE | ec2-user |
+| Bitnami | bitnami |
+| Windows | Administrator |
+
+If the auto-detection fails, you can manually change the username in the SSH connection dialog.
 
 ## Security Group SSH Rule Management
 

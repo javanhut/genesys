@@ -44,6 +44,7 @@ type InstanceConfig struct {
 	SecurityGroups []string
 	UserData       string
 	KeyPair        string
+	PublicIP       bool // Whether to assign a public IP address
 	Tags           map[string]string
 }
 

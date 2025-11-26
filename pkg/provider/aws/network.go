@@ -626,3 +626,361 @@ func (sg *SecurityGroupDetail) GetSSHCidrs() []string {
 	}
 	return cidrs
 }
+
+// CreateSecurityGroupResponse represents the EC2 CreateSecurityGroup API response
+type CreateSecurityGroupResponse struct {
+	XMLName xml.Name `xml:"CreateSecurityGroupResponse"`
+	GroupId string   `xml:"groupId"`
+}
+
+// CreateSSHSecurityGroup creates a new security group with SSH access enabled
+// Returns the security group ID
+func (n *NetworkService) CreateSSHSecurityGroup(ctx context.Context, name, description, vpcId, sshCidr string) (string, error) {
+	client, err := n.provider.CreateClient("ec2")
+	if err != nil {
+		return "", fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Create the security group
+	params := map[string]string{
+		"Action":           "CreateSecurityGroup",
+		"Version":          "2016-11-15",
+		"GroupName":        name,
+		"GroupDescription": description,
+	}
+
+	if vpcId != "" {
+		params["VpcId"] = vpcId
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create security group: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return "", fmt.Errorf("CreateSecurityGroup failed: %s", string(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var createResp CreateSecurityGroupResponse
+	if err := xml.Unmarshal(body, &createResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	groupId := createResp.GroupId
+	if groupId == "" {
+		return "", fmt.Errorf("security group created but no group ID returned")
+	}
+
+	// Add SSH rule to the security group
+	if err := n.AddSSHRule(ctx, groupId, sshCidr); err != nil {
+		// Try to clean up the security group we just created
+		_ = n.DeleteSecurityGroup(ctx, groupId)
+		return "", fmt.Errorf("failed to add SSH rule to security group: %w", err)
+	}
+
+	// Add tags to the security group
+	tags := map[string]string{
+		"Name":      name,
+		"ManagedBy": "Genesys",
+		"Purpose":   "SSH Access",
+	}
+	if err := n.createTags(client, groupId, tags); err != nil {
+		// Non-fatal, just log
+	}
+
+	return groupId, nil
+}
+
+// CreateSSHSecurityGroupInRegion creates a new security group with SSH access in a specific region
+func (n *NetworkService) CreateSSHSecurityGroupInRegion(ctx context.Context, name, description, vpcId, sshCidr, region string) (string, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return "", fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	// Create the security group
+	params := map[string]string{
+		"Action":           "CreateSecurityGroup",
+		"Version":          "2016-11-15",
+		"GroupName":        name,
+		"GroupDescription": description,
+	}
+
+	if vpcId != "" {
+		params["VpcId"] = vpcId
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create security group: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return "", fmt.Errorf("CreateSecurityGroup failed: %s", string(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var createResp CreateSecurityGroupResponse
+	if err := xml.Unmarshal(body, &createResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	groupId := createResp.GroupId
+	if groupId == "" {
+		return "", fmt.Errorf("security group created but no group ID returned")
+	}
+
+	// Add SSH rule to the security group
+	if err := n.AddSSHRuleInRegion(ctx, groupId, region, sshCidr); err != nil {
+		// Try to clean up the security group we just created
+		_ = n.DeleteSecurityGroupInRegion(ctx, groupId, region)
+		return "", fmt.Errorf("failed to add SSH rule to security group: %w", err)
+	}
+
+	// Add tags to the security group
+	tags := map[string]string{
+		"Name":      name,
+		"ManagedBy": "Genesys",
+		"Purpose":   "SSH Access",
+	}
+	_ = n.createTagsInRegion(client, groupId, tags)
+
+	return groupId, nil
+}
+
+// DeleteSecurityGroup deletes a security group
+func (n *NetworkService) DeleteSecurityGroup(ctx context.Context, groupId string) error {
+	client, err := n.provider.CreateClient("ec2")
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "DeleteSecurityGroup",
+		"Version": "2016-11-15",
+		"GroupId": groupId,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete security group: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return fmt.Errorf("DeleteSecurityGroup failed: %s", string(body))
+	}
+
+	return nil
+}
+
+// DeleteSecurityGroupInRegion deletes a security group in a specific region
+func (n *NetworkService) DeleteSecurityGroupInRegion(ctx context.Context, groupId, region string) error {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":  "DeleteSecurityGroup",
+		"Version": "2016-11-15",
+		"GroupId": groupId,
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete security group: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return fmt.Errorf("DeleteSecurityGroup failed: %s", string(body))
+	}
+
+	return nil
+}
+
+// createTagsInRegion creates tags for a resource in a specific region
+func (n *NetworkService) createTagsInRegion(client *AWSClient, resourceId string, tags map[string]string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	params := map[string]string{
+		"Action":       "CreateTags",
+		"Version":      "2016-11-15",
+		"ResourceId.1": resourceId,
+	}
+
+	tagIndex := 1
+	for key, value := range tags {
+		params[fmt.Sprintf("Tag.%d.Key", tagIndex)] = key
+		params[fmt.Sprintf("Tag.%d.Value", tagIndex)] = value
+		tagIndex++
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return fmt.Errorf("CreateTags failed: %s", string(body))
+	}
+
+	return nil
+}
+
+// GetDefaultVPC retrieves the default VPC for the region
+func (n *NetworkService) GetDefaultVPC(ctx context.Context) (string, error) {
+	client, err := n.provider.CreateClient("ec2")
+	if err != nil {
+		return "", fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":           "DescribeVpcs",
+		"Version":          "2016-11-15",
+		"Filter.1.Name":    "is-default",
+		"Filter.1.Value.1": "true",
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe VPCs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return "", fmt.Errorf("DescribeVpcs failed: %s", string(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var descResp DescribeVpcsResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(descResp.VPCs.Items) == 0 {
+		return "", fmt.Errorf("no default VPC found in region")
+	}
+
+	return descResp.VPCs.Items[0].VpcId, nil
+}
+
+// GetDefaultVPCInRegion retrieves the default VPC for a specific region
+func (n *NetworkService) GetDefaultVPCInRegion(ctx context.Context, region string) (string, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return "", fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":           "DescribeVpcs",
+		"Version":          "2016-11-15",
+		"Filter.1.Name":    "is-default",
+		"Filter.1.Value.1": "true",
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe VPCs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return "", fmt.Errorf("DescribeVpcs failed: %s", string(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var descResp DescribeVpcsResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(descResp.VPCs.Items) == 0 {
+		return "", fmt.Errorf("no default VPC found in region %s", region)
+	}
+
+	return descResp.VPCs.Items[0].VpcId, nil
+}
+
+// GetDefaultSubnet retrieves a default subnet in the default VPC
+func (n *NetworkService) GetDefaultSubnetInRegion(ctx context.Context, region string) (string, error) {
+	client, err := NewAWSClient(region, "ec2")
+	if err != nil {
+		return "", fmt.Errorf("failed to create EC2 client: %w", err)
+	}
+
+	params := map[string]string{
+		"Action":           "DescribeSubnets",
+		"Version":          "2016-11-15",
+		"Filter.1.Name":    "default-for-az",
+		"Filter.1.Value.1": "true",
+	}
+
+	resp, err := client.Request("POST", "/", params, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe subnets: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := ReadResponse(resp)
+		return "", fmt.Errorf("DescribeSubnets failed: %s", string(body))
+	}
+
+	body, err := ReadResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse response to get first default subnet
+	type DescribeSubnetsResponse struct {
+		XMLName xml.Name `xml:"DescribeSubnetsResponse"`
+		Subnets struct {
+			Items []struct {
+				SubnetId string `xml:"subnetId"`
+			} `xml:"item"`
+		} `xml:"subnetSet"`
+	}
+
+	var descResp DescribeSubnetsResponse
+	if err := xml.Unmarshal(body, &descResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(descResp.Subnets.Items) == 0 {
+		return "", fmt.Errorf("no default subnet found in region %s", region)
+	}
+
+	return descResp.Subnets.Items[0].SubnetId, nil
+}

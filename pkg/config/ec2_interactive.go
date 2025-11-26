@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -313,11 +314,22 @@ func (iec *InteractiveEC2Config) getInstanceConfiguration(instanceName string, r
 	// Public IP
 	publicIPPrompt := &survey.Confirm{
 		Message: "Assign a public IP address?",
-		Help:    "Allows internet access to/from the instance",
+		Help:    "Allows internet access to/from the instance. Required for SSH access over the internet.",
 		Default: true,
 	}
 	if err := survey.AskOne(publicIPPrompt, &config.PublicIP); err != nil {
 		return config, err
+	}
+
+	// Security group configuration for SSH
+	if config.PublicIP && config.KeyPair != "" {
+		sgConfig, err := iec.getSecurityGroupConfig(region, instanceName)
+		if err != nil {
+			return config, err
+		}
+		if len(sgConfig) > 0 {
+			config.SecurityGroups = sgConfig
+		}
 	}
 
 	// Storage configuration
@@ -694,11 +706,151 @@ func (iec *InteractiveEC2Config) saveKeyPairLocally(keyPair *aws.KeyPair) (strin
 	}
 
 	// Write the private key with restrictive permissions (0600)
-	if err := os.WriteFile(keyPath, []byte(keyPair.KeyMaterial), 0600); err != nil {
+	// Ensure key material has proper formatting (trim whitespace and ensure trailing newline)
+	keyContent := strings.TrimSpace(keyPair.KeyMaterial) + "\n"
+	if err := os.WriteFile(keyPath, []byte(keyContent), 0600); err != nil {
 		return "", fmt.Errorf("failed to write key file: %w", err)
 	}
 
 	return keyPath, nil
+}
+
+// getSecurityGroupConfig handles security group configuration for SSH access
+func (iec *InteractiveEC2Config) getSecurityGroupConfig(region string, instanceName string) ([]string, error) {
+	fmt.Println("\nSecurity Group Configuration:")
+	fmt.Println("A security group with SSH access (port 22) is required to connect to your instance.")
+
+	var configureSSH bool
+	sshPrompt := &survey.Confirm{
+		Message: "Create a security group with SSH access enabled?",
+		Help:    "This will create a security group that allows SSH connections",
+		Default: true,
+	}
+	if err := survey.AskOne(sshPrompt, &configureSSH); err != nil {
+		return nil, err
+	}
+
+	if !configureSSH {
+		fmt.Println("Warning: Without SSH access, you will not be able to connect to your instance remotely.")
+		return nil, nil
+	}
+
+	// Get the user's public IP
+	fmt.Println("Detecting your public IP address...")
+	myIP, err := getMyPublicIP()
+	if err != nil {
+		fmt.Printf("Could not detect public IP: %v\n", err)
+		myIP = ""
+	} else {
+		fmt.Printf("Your public IP: %s\n", myIP)
+	}
+
+	// Ask for SSH source CIDR
+	sshCidrOptions := []string{}
+	if myIP != "" {
+		sshCidrOptions = append(sshCidrOptions, fmt.Sprintf("my-ip (%s/32) - Most secure, only your current IP", myIP))
+	}
+	sshCidrOptions = append(sshCidrOptions,
+		"anywhere (0.0.0.0/0) - Less secure, allows SSH from any IP",
+		"custom - Enter a custom CIDR block",
+	)
+
+	var selectedCIDR string
+	cidrPrompt := &survey.Select{
+		Message: "Allow SSH from:",
+		Options: sshCidrOptions,
+		Default: sshCidrOptions[0],
+		Help:    "Select the source IP range that can SSH to your instance",
+	}
+	if err := survey.AskOne(cidrPrompt, &selectedCIDR); err != nil {
+		return nil, err
+	}
+
+	var sshCidr string
+	if strings.HasPrefix(selectedCIDR, "my-ip") {
+		sshCidr = myIP + "/32"
+	} else if strings.HasPrefix(selectedCIDR, "anywhere") {
+		sshCidr = "0.0.0.0/0"
+		fmt.Println("Warning: 0.0.0.0/0 allows SSH from anywhere. Consider restricting to your IP for better security.")
+	} else {
+		var customCIDR string
+		customPrompt := &survey.Input{
+			Message: "Enter CIDR block (e.g., 192.168.1.0/24):",
+			Help:    "The IP range that can SSH to your instance",
+		}
+		if err := survey.AskOne(customPrompt, &customCIDR, survey.WithValidator(survey.Required)); err != nil {
+			return nil, err
+		}
+		sshCidr = customCIDR
+	}
+
+	// Create the security group
+	fmt.Printf("Creating security group for SSH access...\n")
+
+	provider, err := aws.NewAWSProvider(region)
+	if err != nil {
+		fmt.Printf("Warning: Could not connect to AWS: %v\n", err)
+		fmt.Println("You will need to manually create a security group with SSH access.")
+		return nil, nil
+	}
+
+	// Get default VPC
+	ctx := context.Background()
+	networkService := provider.Network().(*aws.NetworkService)
+	vpcId, err := networkService.GetDefaultVPCInRegion(ctx, region)
+	if err != nil {
+		fmt.Printf("Warning: Could not find default VPC: %v\n", err)
+		fmt.Println("Security group will be created in the default VPC.")
+		vpcId = ""
+	}
+
+	// Generate security group name
+	sgName := fmt.Sprintf("genesys-ssh-%s-%d", instanceName, time.Now().Unix())
+	sgDescription := fmt.Sprintf("SSH access for %s - managed by Genesys", instanceName)
+
+	sgId, err := networkService.CreateSSHSecurityGroupInRegion(ctx, sgName, sgDescription, vpcId, sshCidr, region)
+	if err != nil {
+		fmt.Printf("Warning: Failed to create security group: %v\n", err)
+		fmt.Println("You will need to manually create a security group with SSH access.")
+		return nil, nil
+	}
+
+	fmt.Printf("Security group created: %s (%s)\n", sgName, sgId)
+	fmt.Printf("SSH access allowed from: %s\n", sshCidr)
+
+	return []string{sgId}, nil
+}
+
+// getMyPublicIP attempts to get the user's public IP address
+func getMyPublicIP() (string, error) {
+	services := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	for _, service := range services {
+		resp, err := client.Get(service)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		body := make([]byte, 64)
+		n, _ := resp.Body.Read(body)
+		ip := strings.TrimSpace(string(body[:n]))
+		if ip != "" {
+			return ip, nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to determine public IP")
 }
 
 func (iec *InteractiveEC2Config) getTags() (map[string]string, error) {
