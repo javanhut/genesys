@@ -22,20 +22,20 @@ func main() {
 		Short: "Interactive cloud resource management tool",
 		Long: `Genesys is a simplicity-first Infrastructure as a Service tool that 
 focuses on outcomes rather than resources. It provides an interactive approach 
-to cloud resource management with YAML-based configuration and dry-run capabilities.
+to cloud resource management with TOML-based configuration and dry-run capabilities.
 
 Key features:
   • Interactive workflows for resource creation
   • Multi-cloud support (AWS, GCP, Azure, Tencent)
   • Configuration-driven resource lifecycle
-  • Dry-run capability for safe previews
+  • Dry-run capability for safe previews (default behavior)
   • Direct API integration for fast performance
 
 Get started:
   1. Configure provider: genesys config setup
   2. Create resources:    genesys interact
-  3. Deploy safely:       genesys execute config.yaml --dry-run
-  4. Deploy for real:     genesys execute config.yaml`,
+  3. Preview changes:     genesys execute config.toml
+  4. Deploy for real:     genesys execute config.toml --apply`,
 		Version: fmt.Sprintf("%s (%s)", version, commit),
 	}
 

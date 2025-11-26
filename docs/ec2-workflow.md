@@ -92,15 +92,16 @@ Configuration saved to: ec2-my-instance-1703876543.toml
 
 ### Step 5: Preview Deployment
 
-Always use dry-run to preview changes:
+Preview changes (default behavior):
 ```bash
-genesys execute ec2-my-instance-*.toml --dry-run
+genesys execute ec2-my-instance-*.toml
 ```
 
 ### Step 6: Deploy Instance
 
+Deploy with `--apply`:
 ```bash
-genesys execute ec2-my-instance-*.toml
+genesys execute ec2-my-instance-*.toml --apply
 ```
 
 ### Step 7: Manage Instance
@@ -109,11 +110,11 @@ genesys execute ec2-my-instance-*.toml
 # List your instances
 genesys list resources --service compute
 
-# Update instance tags (if needed)
+# Preview instance update (if needed)
 genesys execute ec2-my-instance-*.toml
 
 # Terminate when done
-genesys execute deletion ec2-my-instance-*.toml
+genesys execute ec2-my-instance-*.toml --delete
 ```
 
 ## Advanced Configuration Examples
@@ -432,8 +433,8 @@ genesys interact  # S3 bucket: myapp-data-bucket
 genesys interact  # EC2 instance: myapp-server
 
 # Deploy together
-genesys execute s3-myapp-data-bucket-*.yaml
-genesys execute ec2-myapp-server-*.toml
+genesys execute s3-myapp-data-bucket-*.toml --apply
+genesys execute ec2-myapp-server-*.toml --apply
 ```
 
 ### With Databases (Future)
@@ -450,7 +451,7 @@ genesys interact  # EC2 instance: myapp-server
 ## Best Practices Summary
 
 1. **Naming Convention**: Use descriptive, environment-specific names
-2. **Always Dry-Run**: Preview all changes, especially in production
+2. **Preview First**: Execute without `--apply` to preview all changes
 3. **Tag Consistently**: Environment, Owner, Purpose, ManagedBy
 4. **Security First**: Use private instances, enable encryption
 5. **Cost Awareness**: Monitor Free Tier usage, right-size instances

@@ -60,16 +60,16 @@ Follow this workflow:
    - Public access: `no` (secure by default)
    - Add tags as desired
 
-The interactive wizard will generate a configuration file like `s3-my-tutorial-bucket-1234567890.yaml`
+The interactive wizard will generate a configuration file like `s3-my-tutorial-bucket-1234567890.toml`
 
 ### Step 4: Preview and Deploy
 
 ```bash
-# Preview what will be created (safe - no changes made)
-./genesys execute s3-my-tutorial-bucket-*.yaml --dry-run
+# Preview what will be created (default behavior - no changes made)
+./genesys execute s3-my-tutorial-bucket-*.toml
 
-# Deploy the bucket
-./genesys execute s3-my-tutorial-bucket-*.yaml
+# Deploy the bucket with --apply
+./genesys execute s3-my-tutorial-bucket-*.toml --apply
 ```
 
 Success! Your S3 bucket is now created with secure defaults.
@@ -94,10 +94,10 @@ Follow this workflow:
 The wizard will generate `ec2-my-dev-server-1234567890.toml` with cost estimates.
 
 ```bash
-# Preview the instance creation
-./genesys execute ec2-my-dev-server-*.toml --dry-run
+# Preview the instance creation (default behavior)
+./genesys execute ec2-my-dev-server-*.toml
 
-# Deploy the instance
+# Deploy the instance with --apply
 ./genesys execute ec2-my-dev-server-*.toml
 ```
 
@@ -170,13 +170,13 @@ Success! Your Lambda is deployed with a public HTTPS URL you can test immediatel
 
 ```bash
 # Delete the Lambda function (includes IAM role cleanup)
-./genesys execute deletion lambda-my-first-function-*.toml
+./genesys execute lambda-my-first-function-*.toml --delete
 
 # Delete the EC2 instance
-./genesys execute deletion ec2-my-dev-server-*.toml
+./genesys execute ec2-my-dev-server-*.toml --delete
 
 # Delete the S3 bucket
-./genesys execute deletion s3-my-tutorial-bucket-*.yaml
+./genesys execute s3-my-tutorial-bucket-*.toml --delete
 ```
 
 ## What Can You Create?
@@ -223,9 +223,9 @@ Success! Your Lambda is deployed with a public HTTPS URL you can test immediatel
 - **Permission Checking**: Validates required cloud permissions before deployment
 
 ### Developer Experience
-- **Dry-Run Everything**: Preview all changes before making them
+- **Preview by Default**: All changes are previewed before making them
 - **Human-Readable Plans**: Understand exactly what will happen
-- **Configuration Files**: Generated TOML/YAML for version control
+- **Configuration Files**: Generated TOML for version control
 - **Direct API Integration**: Fast performance without heavy SDKs
 
 ### Interactive Terminal UI (New!)
@@ -265,20 +265,16 @@ genesys config default aws          # Set default provider
 
 ### Resource Deployment
 ```bash
-# Deploy resources
-genesys execute config.yaml                    
+# Preview changes (default behavior - safe, no actual deployment)
 genesys execute config.toml
 
-# Deploy Lambda functions (includes --apply flag requirement)
+# Deploy resources with --apply
+genesys execute config.toml --apply
 genesys execute lambda-function.toml --apply
 
-# Preview changes (safe - no actual deployment)
-genesys execute config.yaml --dry-run          
-genesys execute lambda-function.toml --dry-run
-
-# Delete resources (includes complete cleanup)
-genesys execute deletion config.yaml           
-genesys execute deletion lambda-function.toml  # Removes function, layer, and IAM role
+# Delete resources with --delete (includes complete cleanup)
+genesys execute config.toml --delete
+genesys execute lambda-function.toml --delete  # Removes function, layer, and IAM role
 ```
 
 ### Resource Discovery
@@ -452,12 +448,12 @@ genesys interact
 # Type: t3.micro (Free Tier)
 # OS: ubuntu-lts
 
-# Step 4: Deploy everything
-genesys execute s3-myapp-dev-data-bucket-*.yaml --dry-run
-genesys execute s3-myapp-dev-data-bucket-*.yaml
+# Step 4: Deploy everything (preview, then apply)
+genesys execute s3-myapp-dev-data-bucket-*.toml
+genesys execute s3-myapp-dev-data-bucket-*.toml --apply
 
-genesys execute ec2-myapp-dev-server-*.toml --dry-run  
 genesys execute ec2-myapp-dev-server-*.toml
+genesys execute ec2-myapp-dev-server-*.toml --apply
 
 # Step 5: Verify deployment
 genesys list resources
@@ -481,11 +477,11 @@ genesys interact
 # Encryption: yes
 # Lifecycle: 30 days archive, 365 days delete
 
-# Step 3: Always dry-run first in production
-genesys execute s3-myapp-prod-storage-*.yaml --dry-run
+# Step 3: Preview first in production (default behavior)
+genesys execute s3-myapp-prod-storage-*.toml
 
-# Step 4: Review the plan, then deploy
-genesys execute s3-myapp-prod-storage-*.yaml
+# Step 4: Review the plan, then deploy with --apply
+genesys execute s3-myapp-prod-storage-*.toml --apply
 
 # Step 5: Monitor and verify
 genesys list resources
@@ -553,8 +549,8 @@ genesys interact
 # Function URL: yes
 # Memory: 512 MB
 
-# Step 3: Deploy with dry-run first
-genesys execute lambda-my-api-*.toml --dry-run
+# Step 3: Preview then deploy
+genesys execute lambda-my-api-*.toml
 genesys execute lambda-my-api-*.toml --apply
 
 # Step 4: Test your API
@@ -568,7 +564,7 @@ genesys interact
 # Name: my-api-data-bucket
 # Versioning: yes, Encryption: yes
 
-genesys execute s3-my-api-data-bucket-*.yaml --apply
+genesys execute s3-my-api-data-bucket-*.toml --apply
 ```
 
 ### Multi-Environment Management
@@ -586,12 +582,12 @@ genesys interact  # Dev resources
 genesys interact  # Staging resources  
 genesys interact  # Production resources
 
-# Deploy with appropriate validation
-genesys execute dev-*.yaml
-genesys execute staging-*.yaml --dry-run
-genesys execute staging-*.yaml
-genesys execute prod-*.yaml --dry-run
-genesys execute prod-*.yaml
+# Deploy with appropriate validation (preview is default)
+genesys execute dev-*.toml --apply
+genesys execute staging-*.toml         # preview first
+genesys execute staging-*.toml --apply
+genesys execute prod-*.toml            # preview first
+genesys execute prod-*.toml --apply
 ```
 
 ## Monitoring and Management (No AWS CLI Required!)
@@ -775,7 +771,7 @@ genesys list resources --output json  # Get detailed resource information
 ### Technical Design
 - **Direct API Integration** - Fast, lightweight cloud provider communication
 - **Interactive CLI** - Rich terminal experience with guided workflows  
-- **Configuration Generation** - TOML/YAML files for version control and repeatability
+- **Configuration Generation** - TOML files for version control and repeatability
 - **Validation First** - Extensive validation before any cloud API calls
 - **State Awareness** - Tracks resources locally to prevent conflicts
 

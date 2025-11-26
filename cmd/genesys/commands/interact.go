@@ -19,16 +19,16 @@ This guided workflow will:
   1. Select your cloud provider (AWS, GCP, Azure, Tencent)
   2. Choose resource type (S3 Storage Bucket, Compute Instance, etc.)
   3. Configure resource settings through step-by-step prompts
-  4. Generate YAML configuration file for deployment
+  4. Generate TOML configuration file for deployment
 
 Example workflow:
   genesys interact
   # Follow prompts to create configuration
-  # Saves: s3-mybucket-1234567890.yaml
+  # Saves: s3-mybucket-1234567890.toml
   
 Next steps after interactive mode:
-  genesys execute s3-mybucket-*.yaml --dry-run   # Preview
-  genesys execute s3-mybucket-*.yaml             # Deploy`,
+  genesys execute s3-mybucket-*.toml             # Preview changes
+  genesys execute s3-mybucket-*.toml --apply     # Deploy`,
 		RunE: runInteract,
 	}
 }
@@ -132,9 +132,9 @@ func interactS3Bucket(provider string) error {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Printf("  • Review the configuration: cat %s\n", filePath)
-	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", filePath)
-	fmt.Printf("  • Deploy the bucket: genesys execute %s\n", filePath)
-	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", filePath)
+	fmt.Printf("  • Preview deployment: genesys execute %s\n", filePath)
+	fmt.Printf("  • Deploy the bucket: genesys execute %s --apply\n", filePath)
+	fmt.Printf("  • Delete when done: genesys execute %s --delete\n", filePath)
 
 	return nil
 }
@@ -169,9 +169,9 @@ func interactCompute(provider string) error {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Printf("  • Review the configuration: cat %s\n", filePath)
-	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", filePath)
-	fmt.Printf("  • Deploy the instance: genesys execute %s\n", filePath)
-	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", filePath)
+	fmt.Printf("  • Preview deployment: genesys execute %s\n", filePath)
+	fmt.Printf("  • Deploy the instance: genesys execute %s --apply\n", filePath)
+	fmt.Printf("  • Delete when done: genesys execute %s --delete\n", filePath)
 
 	return nil
 }
@@ -217,9 +217,9 @@ func interactFunction(provider string) error {
 	fmt.Println("Next steps:")
 	fmt.Printf("  • Review the configuration: cat %s\n", filePath)
 	fmt.Printf("  • Build and test locally: genesys lambda build %s\n", filePath)
-	fmt.Printf("  • Preview deployment: genesys execute %s --dry-run\n", filePath)
-	fmt.Printf("  • Deploy the function: genesys execute %s\n", filePath)
-	fmt.Printf("  • Delete when done: genesys execute deletion %s\n", filePath)
+	fmt.Printf("  • Preview deployment: genesys execute %s\n", filePath)
+	fmt.Printf("  • Deploy the function: genesys execute %s --apply\n", filePath)
+	fmt.Printf("  • Delete when done: genesys execute %s --delete\n", filePath)
 
 	return nil
 }

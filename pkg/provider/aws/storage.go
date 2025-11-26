@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -65,6 +66,17 @@ type S3Bucket struct {
 type BucketLocationConstraint struct {
 	XMLName            xml.Name `xml:"LocationConstraint"`
 	LocationConstraint string   `xml:",chardata"`
+}
+
+// encodeS3Key properly URL-encodes an S3 object key for use in HTTP requests.
+// It encodes each path segment individually while preserving forward slashes as delimiters.
+// This handles special characters like spaces, plus signs, ampersands, etc.
+func encodeS3Key(key string) string {
+	segments := strings.Split(key, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
 }
 
 // CreateBucket creates a new S3 bucket
@@ -995,7 +1007,7 @@ func (s *StorageService) GetObject(ctx context.Context, bucketName, key string) 
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("/%s/%s", bucketName, key)
+	endpoint := fmt.Sprintf("/%s/%s", bucketName, encodeS3Key(key))
 	resp, err := client.Request("GET", endpoint, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object: %w", err)
@@ -1019,7 +1031,7 @@ func (s *StorageService) GetObjectMetadata(ctx context.Context, bucketName, key 
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("/%s/%s", bucketName, key)
+	endpoint := fmt.Sprintf("/%s/%s", bucketName, encodeS3Key(key))
 
 	req, err := http.NewRequest("HEAD", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), nil)
 	if err != nil {
@@ -1084,7 +1096,7 @@ func (s *StorageService) PutObject(ctx context.Context, bucketName, key string, 
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("/%s/%s", bucketName, key)
+	endpoint := fmt.Sprintf("/%s/%s", bucketName, encodeS3Key(key))
 
 	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), bytes.NewReader(data))
 	if err != nil {
@@ -1126,7 +1138,7 @@ func (s *StorageService) DeleteObject(ctx context.Context, bucketName, key strin
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("/%s/%s", bucketName, key)
+	endpoint := fmt.Sprintf("/%s/%s", bucketName, encodeS3Key(key))
 	resp, err := client.Request("DELETE", endpoint, nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete object: %w", err)
@@ -1150,8 +1162,8 @@ func (s *StorageService) CopyObject(ctx context.Context, srcBucket, srcKey, dstB
 		return fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("/%s/%s", dstBucket, dstKey)
-	copySource := fmt.Sprintf("/%s/%s", srcBucket, srcKey)
+	endpoint := fmt.Sprintf("/%s/%s", dstBucket, encodeS3Key(dstKey))
+	copySource := fmt.Sprintf("/%s/%s", srcBucket, encodeS3Key(srcKey))
 
 	req, err := http.NewRequest("PUT", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), nil)
 	if err != nil {

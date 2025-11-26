@@ -422,7 +422,10 @@ func (c *AWSClient) signRequest(req *http.Request, body []byte) error {
 	req.Header.Set("X-Amz-Date", timestamp)
 
 	// Create canonical request
-	canonicalURI := req.URL.Path
+	// Use EscapedPath() to get the URI-encoded path, which is required for AWS Signature V4.
+	// req.URL.Path returns the decoded path, which causes signature mismatches for keys
+	// containing special characters (spaces, +, &, etc.)
+	canonicalURI := req.URL.EscapedPath()
 	if canonicalURI == "" {
 		canonicalURI = "/"
 	}

@@ -7,11 +7,11 @@ Complete guide for managing S3 buckets with Genesys interactive workflow.
 Genesys provides a complete S3 bucket lifecycle management through its interactive workflow:
 
 1. **Interactive Configuration** - Create bucket configuration through guided prompts
-2. **Configuration Review** - Review generated YAML configuration
-3. **Dry Run** - Preview bucket creation without making changes
-4. **Deployment** - Create the actual S3 bucket
+2. **Configuration Review** - Review generated TOML configuration
+3. **Preview** - Preview bucket creation without making changes (default behavior)
+4. **Deployment** - Create the actual S3 bucket with `--apply`
 5. **Management** - List and manage existing buckets
-6. **Deletion** - Clean removal of buckets when no longer needed
+6. **Deletion** - Clean removal of buckets with `--delete`
 
 ## Step-by-Step Workflow
 
@@ -40,49 +40,49 @@ Follow the prompts:
      - Archive to Glacier after N days (optional)
      - Delete objects after N days (optional)
 
-The configuration will be saved as: `s3-<bucket-name>-<timestamp>.yaml`
+The configuration will be saved as: `s3-<bucket-name>-<timestamp>.toml`
 
 ### Step 2: Review Configuration
 
 Review the generated configuration file:
 
 ```bash
-cat s3-mybucket-1234567890.yaml
+cat s3-mybucket-1234567890.toml
 ```
 
 Example configuration:
-```yaml
-provider: aws
-region: us-east-1
-resources:
-  storage:
-    - name: my-test-bucket
-      type: bucket
-      versioning: true
-      encryption: true
-      public_access: false
-      tags:
-        Environment: development
-        ManagedBy: Genesys
-        Purpose: demo
-      lifecycle:
-        archive_after_days: 90
-        delete_after_days: 365
-policies:
-  require_encryption: true
-  no_public_buckets: true
-  require_tags:
-    - Environment
-    - ManagedBy
-    - Purpose
+```toml
+provider = "aws"
+region = "us-east-1"
+
+[[resources.storage]]
+name = "my-test-bucket"
+type = "bucket"
+versioning = true
+encryption = true
+public_access = false
+
+[resources.storage.tags]
+Environment = "development"
+ManagedBy = "Genesys"
+Purpose = "demo"
+
+[resources.storage.lifecycle]
+archive_after_days = 90
+delete_after_days = 365
+
+[policies]
+require_encryption = true
+no_public_buckets = true
+require_tags = ["Environment", "ManagedBy", "Purpose"]
 ```
 
-### Step 3: Dry Run (Preview)
+### Step 3: Preview (Default Behavior)
 
 Preview what will be created without making actual changes:
 
 ```bash
-genesys execute s3-mybucket-1234567890.yaml --dry-run
+genesys execute s3-mybucket-1234567890.toml
 ```
 
 Output shows:
@@ -92,10 +92,10 @@ Output shows:
 
 ### Step 4: Deploy the Bucket
 
-Create the actual S3 bucket:
+Create the actual S3 bucket with `--apply`:
 
 ```bash
-genesys execute s3-mybucket-1234567890.yaml
+genesys execute s3-mybucket-1234567890.toml --apply
 ```
 
 This will:
@@ -126,11 +126,11 @@ genesys list resources --service storage --output json
 When the bucket is no longer needed:
 
 ```bash
-# Preview deletion (dry-run)
-genesys execute deletion s3-mybucket-1234567890.yaml --dry-run
+# Preview deletion
+genesys execute s3-mybucket-1234567890.toml --delete
 
-# Actually delete the bucket
-genesys execute deletion s3-mybucket-1234567890.yaml
+# Actually delete the bucket (force deletion for buckets with content)
+genesys execute s3-mybucket-1234567890.toml --delete --force-deletion
 ```
 
 The deletion process:
@@ -231,7 +231,7 @@ AWS credentials must have permissions for:
 
 ## Best Practices
 
-1. **Always use dry-run first**: Preview changes before deployment
+1. **Preview is default**: Running execute shows a preview before deployment
 2. **Use descriptive names**: Include project, environment, or purpose in bucket names
 3. **Enable versioning**: Protects against accidental data loss
 4. **Enable encryption**: Protects data at rest
@@ -265,4 +265,4 @@ AWS credentials must have permissions for:
 - Check command help: `genesys execute --help`
 - List configured providers: `genesys config list`
 - Validate provider configuration: `genesys config show aws`
-- Use dry-run to preview: `genesys execute config.yaml --dry-run`
+- Preview changes: `genesys execute config.toml` (default behavior)

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"gopkg.in/yaml.v3"
 )
 
 // ConfigManager handles configuration loading and reloading
@@ -156,7 +155,7 @@ type Policies struct {
 	MaxCostPerMonth   float64  `yaml:"max_cost_per_month,omitempty" toml:"max_cost_per_month,omitempty"`
 }
 
-// LoadConfig loads configuration from a file
+// LoadConfig loads configuration from a TOML file
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -165,27 +164,10 @@ func LoadConfig(path string) (*Config, error) {
 
 	var config Config
 
-	// Detect format by extension
-	switch filepath.Ext(path) {
-	case ".yaml", ".yml":
-		err = yaml.Unmarshal(data, &config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse YAML: %w", err)
-		}
-	case ".toml":
-		_, err = toml.Decode(string(data), &config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse TOML: %w", err)
-		}
-	default:
-		// Try to auto-detect format
-		err = yaml.Unmarshal(data, &config)
-		if err != nil {
-			_, err = toml.Decode(string(data), &config)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse config (tried YAML and TOML): %w", err)
-			}
-		}
+	// Parse TOML configuration (only supported format)
+	_, err = toml.Decode(string(data), &config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse TOML config: %w", err)
 	}
 
 	// Apply defaults and validate
@@ -197,28 +179,15 @@ func LoadConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
-// SaveConfig saves configuration to a file
+// SaveConfig saves configuration to a TOML file
 func SaveConfig(config *Config, path string) error {
-	var data []byte
-	var err error
-
-	switch filepath.Ext(path) {
-	case ".yaml", ".yml":
-		data, err = yaml.Marshal(config)
-	case ".toml":
-		buf := new(bytes.Buffer)
-		err = toml.NewEncoder(buf).Encode(config)
-		data = buf.Bytes()
-	default:
-		// Default to YAML
-		data, err = yaml.Marshal(config)
-	}
-
+	buf := new(bytes.Buffer)
+	err := toml.NewEncoder(buf).Encode(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, buf.Bytes(), 0644)
 }
 
 // NewConfigManager creates a new configuration manager

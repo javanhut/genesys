@@ -6,30 +6,29 @@ import (
 	"testing"
 )
 
-func TestLoadConfig_YAML(t *testing.T) {
-	// Create temporary YAML file
-	yamlContent := `
-provider: aws
-region: us-east-1
+func TestLoadConfig_TOML_Compute(t *testing.T) {
+	// Create temporary TOML file
+	tomlContent := `
+provider = "aws"
+region = "us-east-1"
 
-resources:
-  compute:
-    - name: test-server
-      type: medium
-      count: 2
-  
-  storage:
-    - name: test-bucket
-      type: bucket
-      versioning: true
+[[resources.compute]]
+name = "test-server"
+type = "medium"
+count = 2
 
-policies:
-  require_encryption: true
-  max_cost_per_month: 100
+[[resources.storage]]
+name = "test-bucket"
+type = "bucket"
+versioning = true
+
+[policies]
+require_encryption = true
+max_cost_per_month = 100
 `
 
-	tempFile := filepath.Join(t.TempDir(), "test.yaml")
-	err := os.WriteFile(tempFile, []byte(yamlContent), 0644)
+	tempFile := filepath.Join(t.TempDir(), "test.toml")
+	err := os.WriteFile(tempFile, []byte(tomlContent), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
@@ -195,7 +194,7 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
-func TestSaveConfig_YAML(t *testing.T) {
+func TestSaveConfig_TOML(t *testing.T) {
 	config := &Config{
 		Provider: "aws",
 		Region:   "us-east-1",
@@ -215,7 +214,7 @@ func TestSaveConfig_YAML(t *testing.T) {
 		},
 	}
 
-	tempFile := filepath.Join(t.TempDir(), "output.yaml")
+	tempFile := filepath.Join(t.TempDir(), "output.toml")
 	err := SaveConfig(config, tempFile)
 	if err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)

@@ -1,0 +1,75 @@
+# Serverless API with database
+# Example template for serverless API deployment
+# NOTE: Provider implementation removed - this is a template only
+
+[[resources.database]]
+name = "api-db"
+engine = "postgres"
+version = "15"
+size = "small"
+storage = 50
+multi_az = false
+
+[resources.database.backup]
+retention_days = 7
+window = "03:00-04:00"
+
+[resources.database.tags]
+Environment = "production"
+Service = "api"
+
+[[resources.serverless]]
+name = "user-service"
+runtime = "python3.11"
+handler = "app.handler"
+memory = 512
+timeout = 30
+
+[resources.serverless.environment]
+DB_HOST = "${database.api-db.endpoint}"
+DB_NAME = "userdb"
+
+[[resources.serverless.triggers]]
+type = "http"
+path = "/users/*"
+methods = ["GET", "POST", "PUT", "DELETE"]
+
+[resources.serverless.tags]
+Environment = "production"
+Service = "api"
+
+[[resources.serverless]]
+name = "auth-service"
+runtime = "python3.11"
+handler = "auth.handler"
+memory = 256
+timeout = 15
+
+[resources.serverless.environment]
+JWT_SECRET = "${secrets.jwt-key}"
+
+[[resources.serverless.triggers]]
+type = "http"
+path = "/auth/*"
+methods = ["POST"]
+
+[resources.serverless.tags]
+Environment = "production"
+Service = "api"
+
+[[resources.storage]]
+name = "api-logs"
+type = "bucket"
+versioning = false
+encryption = true
+
+[resources.storage.lifecycle]
+delete_after_days = 30
+
+[resources.storage.tags]
+Environment = "production"
+Service = "api"
+
+[policies]
+require_tags = ["Environment", "Service"]
+max_cost_per_month = 200

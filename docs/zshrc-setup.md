@@ -30,7 +30,7 @@ genesys <TAB>
 # Should show: config discover execute help interact version
 
 genesys execute <TAB>
-# Should show .yaml, .yml, and .toml files
+# Should show .toml files
 
 genesys discover <TAB>
 # Should show: aws azure gcp tencent

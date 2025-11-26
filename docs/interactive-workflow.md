@@ -122,34 +122,34 @@ Configure automatic object management:
 
 After completing all prompts, the interactive workflow:
 
-1. **Generates YAML configuration** with all specified settings
-2. **Saves to file** with format: `s3-<bucket-name>-<timestamp>.yaml`
+1. **Generates TOML configuration** with all specified settings
+2. **Saves to file** with format: `s3-<bucket-name>-<timestamp>.toml`
 3. **Shows next steps** for deployment and management
 
-Example generated filename: `s3-my-app-data-bucket-1703876543.yaml`
+Example generated filename: `s3-my-app-data-bucket-1703876543.toml`
 
 ## Next Steps After Interactive Configuration
 
 ### Review Configuration
 
 ```bash
-cat s3-my-app-data-bucket-1703876543.yaml
+cat s3-my-app-data-bucket-1703876543.toml
 ```
 
 Verify all settings are correct before deployment.
 
-### Preview Deployment (Dry Run)
+### Preview Deployment (Default Behavior)
 
 ```bash
-genesys execute s3-my-app-data-bucket-1703876543.yaml --dry-run
+genesys execute s3-my-app-data-bucket-1703876543.toml
 ```
 
-Shows exactly what will be created without making changes.
+Shows exactly what will be created without making changes (preview is now the default).
 
 ### Deploy Resources
 
 ```bash
-genesys execute s3-my-app-data-bucket-1703876543.yaml
+genesys execute s3-my-app-data-bucket-1703876543.toml --apply
 ```
 
 Creates the actual S3 bucket with all configured settings.
@@ -168,10 +168,10 @@ genesys list --service storage
 
 ```bash
 # Preview deletion
-genesys execute deletion s3-my-app-data-bucket-1703876543.yaml --dry-run
+genesys execute s3-my-app-data-bucket-1703876543.toml --delete
 
-# Delete bucket
-genesys execute deletion s3-my-app-data-bucket-1703876543.yaml
+# Force delete bucket with all contents
+genesys execute s3-my-app-data-bucket-1703876543.toml --delete --force-deletion
 ```
 
 ## Prerequisites
@@ -294,9 +294,13 @@ genesys interact  # Create S3 bucket
 # Create second resource  
 genesys interact  # Create compute instance
 
+# Preview all resources
+genesys execute bucket-config.toml
+genesys execute instance-config.toml
+
 # Deploy all resources
-genesys execute bucket-config.yaml
-genesys execute instance-config.yaml
+genesys execute bucket-config.toml --apply
+genesys execute instance-config.toml --apply
 ```
 
 ### Configuration Templates
@@ -305,10 +309,10 @@ Save interactive configurations as templates for future use:
 
 ```bash
 # Create base configuration
-genesys interact  # Save as template-s3-basic.yaml
+genesys interact  # Save as template-s3-basic.toml
 
 # Copy and modify for new projects
-cp template-s3-basic.yaml project-a-storage.yaml
-# Edit project-a-storage.yaml as needed
-genesys execute project-a-storage.yaml
+cp template-s3-basic.toml project-a-storage.toml
+# Edit project-a-storage.toml as needed
+genesys execute project-a-storage.toml --apply
 ```

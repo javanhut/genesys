@@ -230,46 +230,46 @@ Cost Estimate for S3 Bucket:
 - Requests: $0.0004 per 1,000 requests  
 - Estimated monthly cost: $1-5 USD (depends on usage)
 
-Configuration will be saved to: s3-tutorial-bucket-yourname-123-1703876543.yaml
+Configuration will be saved to: s3-tutorial-bucket-yourname-123-1703876543.toml
 ```
 
 ### Step 4: Generate Configuration
 
-The interactive wizard creates a file like `s3-tutorial-bucket-yourname-123-1703876543.yaml`:
+The interactive wizard creates a file like `s3-tutorial-bucket-yourname-123-1703876543.toml`:
 
 ```bash
 # View the generated configuration
-cat s3-tutorial-bucket-*.yaml
+cat s3-tutorial-bucket-*.toml
 ```
 
 **Example Generated Configuration:**
-```yaml
-provider: aws
-region: us-east-1
-resources:
-  storage:
-    - name: tutorial-bucket-yourname-123
-      type: bucket
-      versioning: true
-      encryption: true
-      public_access: false
-      tags:
-        Environment: tutorial
-        Purpose: learning
-        Owner: your-name
-        ManagedBy: Genesys
-policies:
-  require_encryption: true
-  no_public_buckets: true
-  require_tags:
-    - Environment
-    - ManagedBy
+```toml
+provider = "aws"
+region = "us-east-1"
+
+[[resources.storage]]
+name = "tutorial-bucket-yourname-123"
+type = "bucket"
+versioning = true
+encryption = true
+public_access = false
+
+[resources.storage.tags]
+Environment = "tutorial"
+Purpose = "learning"
+Owner = "your-name"
+ManagedBy = "Genesys"
+
+[policies]
+require_encryption = true
+no_public_buckets = true
+require_tags = ["Environment", "ManagedBy"]
 ```
 
-### Step 5: Preview Deployment (Always Dry-Run First!)
+### Step 5: Preview Deployment (Default Behavior)
 
 ```bash
-genesys execute s3-tutorial-bucket-*.yaml --dry-run
+genesys execute s3-tutorial-bucket-*.toml
 ```
 
 **Expected Dry-Run Output:**
@@ -296,20 +296,20 @@ AWS API calls required:
 Estimated monthly cost: $2-5 USD (depends on usage)
 Time to complete: 15-30 seconds
 
-No actual changes will be made during this dry-run.
+No actual changes will be made during this preview.
 ```
 
 ### Step 6: Deploy the Bucket
 
-If the dry-run looks correct, deploy it:
+If the preview looks correct, deploy it with the `--apply` flag:
 
 ```bash
-genesys execute s3-tutorial-bucket-*.yaml
+genesys execute s3-tutorial-bucket-*.toml --apply
 ```
 
 **Success Output:**
 ```
-Deploying S3 bucket from: s3-tutorial-bucket-yourname-123-1703876543.yaml
+Deploying S3 bucket from: s3-tutorial-bucket-yourname-123-1703876543.toml
 ========================================================================
 
 ✓ Creating S3 bucket 'tutorial-bucket-yourname-123'... Done!
@@ -327,7 +327,7 @@ Public Access: Blocked
 Next steps:
   • Upload files: aws s3 cp myfile.txt s3://tutorial-bucket-yourname-123/
   • List contents: aws s3 ls s3://tutorial-bucket-yourname-123/
-  • Delete bucket: genesys execute deletion s3-tutorial-bucket-yourname-123-1703876543.yaml
+  • Delete bucket: genesys execute s3-tutorial-bucket-yourname-123-1703876543.toml --delete
 ```
 
 ### Step 7: Verify Your Bucket
@@ -364,10 +364,10 @@ rm test.txt
 aws s3 rm s3://tutorial-bucket-yourname-123/ --recursive
 
 # Preview deletion (always safe to run)
-genesys execute deletion s3-tutorial-bucket-*.yaml --dry-run
+genesys execute s3-tutorial-bucket-*.toml --delete
 
-# Actually delete the bucket
-genesys execute deletion s3-tutorial-bucket-*.yaml
+# Actually delete the bucket (force deletion for buckets with content)
+genesys execute s3-tutorial-bucket-*.toml --delete --force-deletion
 ```
 
 **Congratulations!** You've created, used, and deleted your first S3 bucket with Genesys.
@@ -637,12 +637,12 @@ genesys interact  # prod-app-storage
 **Share configurations with your team:**
 ```bash
 # Save configuration files to Git
-git add s3-*.yaml ec2-*.toml
+git add s3-*.toml ec2-*.toml
 git commit -m "Add infrastructure configurations"
 
 # Team members can deploy the same infrastructure
-genesys execute your-config.yaml --dry-run
-genesys execute your-config.yaml
+genesys execute your-config.toml           # Preview changes
+genesys execute your-config.toml --apply   # Apply changes
 ```
 
 **Establish naming conventions:**
@@ -689,8 +689,8 @@ genesys config show aws
 # Verify resource status
 genesys list resources --output json
 
-# Test with dry-run
-genesys execute your-config.yaml --dry-run
+# Test with preview (default behavior)
+genesys execute your-config.toml
 
 # Get command help
 genesys --help
@@ -746,7 +746,7 @@ genesys interact      # Create production resources
 1. **Always dry-run first** - Especially in production
 2. **Use descriptive names** - Include environment, purpose, and owner
 3. **Tag consistently** - Environment, Owner, Purpose, ManagedBy
-4. **Version control configs** - Save YAML/TOML files in Git
+4. **Version control configs** - Save TOML files in Git
 5. **Clean up regularly** - Delete unused development resources
 6. **Monitor costs** - Use AWS billing dashboard and Free Tier alerts
 7. **Security first** - Use Genesys secure defaults, add custom security as needed
