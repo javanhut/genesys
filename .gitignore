@@ -46,5 +46,5 @@ build/
 .env
 .env.local
 
-
+AGENTS.md
 resources/
