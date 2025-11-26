@@ -1033,23 +1033,16 @@ func (s *StorageService) GetObjectMetadata(ctx context.Context, bucketName, key 
 
 	endpoint := fmt.Sprintf("/%s/%s", bucketName, encodeS3Key(key))
 
-	req, err := http.NewRequest("HEAD", fmt.Sprintf("https://s3.%s.amazonaws.com%s", client.Region, endpoint), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if err := client.signRequest(req, nil); err != nil {
-		return nil, fmt.Errorf("failed to sign request: %w", err)
-	}
-
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.Request("HEAD", endpoint, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to head object: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HeadObject failed with status %d", resp.StatusCode)
+		responseBody, _ := ReadResponse(resp)
+		cleanError := parseS3Error(responseBody)
+		return nil, fmt.Errorf("HeadObject failed: %s", cleanError)
 	}
 
 	metadata := &provider.S3ObjectMetadata{
