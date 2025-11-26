@@ -177,7 +177,88 @@ func interactCompute(provider string) error {
 }
 
 func interactDatabase(provider string) error {
-	fmt.Printf("Database creation for %s not yet implemented\n", provider)
+	fmt.Printf("\nCreating Database Configuration for %s\n", provider)
+	fmt.Println("==========================================")
+	fmt.Println()
+
+	// Only AWS DynamoDB is currently supported
+	if provider != "aws" {
+		fmt.Printf("Database creation is currently only supported for AWS provider\n")
+		return nil
+	}
+
+	// Select database type
+	var dbType string
+	dbPrompt := &survey.Select{
+		Message: "Select database type:",
+		Options: []string{
+			"DynamoDB (NoSQL)",
+			"RDS (Relational)",
+		},
+		Description: func(value string, index int) string {
+			switch value {
+			case "DynamoDB (NoSQL)":
+				return "Serverless NoSQL key-value and document database"
+			case "RDS (Relational)":
+				return "Managed relational database (PostgreSQL, MySQL, etc.)"
+			default:
+				return ""
+			}
+		},
+	}
+	if err := survey.AskOne(dbPrompt, &dbType); err != nil {
+		return err
+	}
+
+	switch dbType {
+	case "DynamoDB (NoSQL)":
+		return interactDynamoDB(provider)
+	case "RDS (Relational)":
+		fmt.Println("RDS configuration is not yet implemented")
+		return nil
+	default:
+		fmt.Printf("Database type '%s' not yet implemented\n", dbType)
+		return nil
+	}
+}
+
+func interactDynamoDB(provider string) error {
+	fmt.Printf("\nCreating DynamoDB Table Configuration\n")
+	fmt.Println("======================================")
+	fmt.Println()
+
+	// Use the DynamoDB interactive configuration
+	dynamoConfig, err := config.NewInteractiveDynamoDBConfig()
+	if err != nil {
+		return fmt.Errorf("failed to initialize DynamoDB configuration: %w", err)
+	}
+
+	// Generate configuration interactively
+	tableConfig, tableName, err := dynamoConfig.CreateTableConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create table configuration: %w", err)
+	}
+
+	// Get region
+	region, err := dynamoConfig.GetRegion()
+	if err != nil {
+		return fmt.Errorf("failed to get region: %w", err)
+	}
+
+	// Save configuration
+	filePath, err := dynamoConfig.SaveConfig(tableConfig, tableName, region)
+	if err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("\n[OK] Configuration saved to: %s\n", filePath)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Printf("  - Review the configuration: cat %s\n", filePath)
+	fmt.Printf("  - Preview deployment: genesys execute %s\n", filePath)
+	fmt.Printf("  - Deploy the table: genesys execute %s --apply\n", filePath)
+	fmt.Printf("  - Delete when done: genesys execute %s --delete\n", filePath)
+
 	return nil
 }
 

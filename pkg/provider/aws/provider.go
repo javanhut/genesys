@@ -25,6 +25,7 @@ type AWSProvider struct {
 	storage    provider.StorageService
 	network    provider.NetworkService
 	database   provider.DatabaseService
+	dynamodb   provider.DynamoDBService
 	serverless provider.ServerlessService
 	state      provider.StateBackend
 	iam        *IAMService
@@ -54,6 +55,7 @@ func NewAWSProvider(region string) (*AWSProvider, error) {
 	awsProvider.storage = NewStorageService(awsProvider)
 	awsProvider.network = NewNetworkService(awsProvider)
 	awsProvider.database = NewDatabaseService(awsProvider)
+	awsProvider.dynamodb = NewDynamoDBService(awsProvider)
 	awsProvider.serverless = NewServerlessService(awsProvider)
 	awsProvider.state = NewStateBackend(awsProvider)
 	awsProvider.iam = NewIAMService(awsProvider)
@@ -114,9 +116,14 @@ func (p *AWSProvider) Network() provider.NetworkService {
 	return p.network
 }
 
-// Database returns the database service
+// Database returns the database service (RDS)
 func (p *AWSProvider) Database() provider.DatabaseService {
 	return p.database
+}
+
+// DynamoDB returns the DynamoDB service
+func (p *AWSProvider) DynamoDB() provider.DynamoDBService {
+	return p.dynamodb
 }
 
 // Serverless returns the serverless service

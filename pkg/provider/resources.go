@@ -695,3 +695,126 @@ type FunctionVersion struct {
 	CodeSHA256   string
 	LastModified time.Time
 }
+
+// DynamoDB Types
+
+// DynamoDBBillingMode represents the billing mode for a DynamoDB table
+type DynamoDBBillingMode string
+
+const (
+	BillingModeOnDemand    DynamoDBBillingMode = "PAY_PER_REQUEST"
+	BillingModeProvisioned DynamoDBBillingMode = "PROVISIONED"
+)
+
+// DynamoDBKeyType represents the key type in a DynamoDB table
+type DynamoDBKeyType string
+
+const (
+	KeyTypeHash  DynamoDBKeyType = "HASH"
+	KeyTypeRange DynamoDBKeyType = "RANGE"
+)
+
+// DynamoDBAttributeType represents the attribute type in DynamoDB
+type DynamoDBAttributeType string
+
+const (
+	AttributeTypeString DynamoDBAttributeType = "S"
+	AttributeTypeNumber DynamoDBAttributeType = "N"
+	AttributeTypeBinary DynamoDBAttributeType = "B"
+)
+
+// DynamoDBTable represents a DynamoDB table
+type DynamoDBTable struct {
+	Name                   string
+	Status                 string
+	BillingMode            DynamoDBBillingMode
+	ItemCount              int64
+	TableSizeBytes         int64
+	CreatedAt              time.Time
+	KeySchema              []DynamoDBKeySchemaElement
+	AttributeDefinitions   []DynamoDBAttributeDefinition
+	ProvisionedThroughput  *DynamoDBProvisionedThroughput
+	GlobalSecondaryIndexes []DynamoDBGlobalSecondaryIndex
+	LocalSecondaryIndexes  []DynamoDBLocalSecondaryIndex
+	StreamEnabled          bool
+	StreamViewType         string
+	TTLEnabled             bool
+	TTLAttributeName       string
+	Region                 string
+	ARN                    string
+}
+
+// DynamoDBKeySchemaElement represents a key schema element
+type DynamoDBKeySchemaElement struct {
+	AttributeName string
+	KeyType       DynamoDBKeyType
+}
+
+// DynamoDBAttributeDefinition represents an attribute definition
+type DynamoDBAttributeDefinition struct {
+	AttributeName string
+	AttributeType DynamoDBAttributeType
+}
+
+// DynamoDBProvisionedThroughput represents provisioned throughput settings
+type DynamoDBProvisionedThroughput struct {
+	ReadCapacityUnits  int64
+	WriteCapacityUnits int64
+}
+
+// DynamoDBGlobalSecondaryIndex represents a global secondary index
+type DynamoDBGlobalSecondaryIndex struct {
+	IndexName             string
+	KeySchema             []DynamoDBKeySchemaElement
+	Projection            *DynamoDBProjection
+	ProvisionedThroughput *DynamoDBProvisionedThroughput
+	IndexStatus           string
+	ItemCount             int64
+	IndexSizeBytes        int64
+}
+
+// DynamoDBLocalSecondaryIndex represents a local secondary index
+type DynamoDBLocalSecondaryIndex struct {
+	IndexName      string
+	KeySchema      []DynamoDBKeySchemaElement
+	Projection     *DynamoDBProjection
+	ItemCount      int64
+	IndexSizeBytes int64
+}
+
+// DynamoDBProjection represents index projection settings
+type DynamoDBProjection struct {
+	ProjectionType   string
+	NonKeyAttributes []string
+}
+
+// DynamoDBTableConfig for creating tables
+type DynamoDBTableConfig struct {
+	Name                   string
+	BillingMode            DynamoDBBillingMode
+	HashKey                DynamoDBKeySchemaElement
+	RangeKey               *DynamoDBKeySchemaElement
+	AttributeDefinitions   []DynamoDBAttributeDefinition
+	ReadCapacityUnits      int64
+	WriteCapacityUnits     int64
+	GlobalSecondaryIndexes []DynamoDBGlobalSecondaryIndex
+	LocalSecondaryIndexes  []DynamoDBLocalSecondaryIndex
+	Tags                   map[string]string
+	EnableStreams          bool
+	StreamViewType         string
+	EnableTTL              bool
+	TTLAttributeName       string
+}
+
+// DynamoDBItem represents an item in a DynamoDB table
+type DynamoDBItem struct {
+	Attributes map[string]interface{}
+}
+
+// DynamoDBScanResult represents the result of a scan operation
+type DynamoDBScanResult struct {
+	Items            []DynamoDBItem
+	Count            int64
+	ScannedCount     int64
+	LastEvaluatedKey map[string]interface{}
+}

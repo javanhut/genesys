@@ -49,6 +49,10 @@ func (m *MockProvider) Database() DatabaseService {
 	return &MockDatabaseService{}
 }
 
+func (m *MockProvider) DynamoDB() DynamoDBService {
+	return &MockDynamoDBService{}
+}
+
 func (m *MockProvider) Serverless() ServerlessService {
 	return &MockServerlessService{}
 }
@@ -378,6 +382,97 @@ func (m *MockDatabaseService) DiscoverDatabases(ctx context.Context) ([]*Databas
 
 func (m *MockDatabaseService) AdoptDatabase(ctx context.Context, id string) (*Database, error) {
 	return m.GetDatabase(ctx, id)
+}
+
+// MockDynamoDBService mock implementation
+type MockDynamoDBService struct{}
+
+func (m *MockDynamoDBService) ListTables(ctx context.Context) ([]*DynamoDBTable, error) {
+	return []*DynamoDBTable{
+		{
+			Name:           "mock-table",
+			Status:         "ACTIVE",
+			BillingMode:    BillingModeOnDemand,
+			ItemCount:      100,
+			TableSizeBytes: 10240,
+			CreatedAt:      time.Now().Add(-7 * 24 * time.Hour),
+			KeySchema: []DynamoDBKeySchemaElement{
+				{AttributeName: "id", KeyType: KeyTypeHash},
+			},
+			Region: "us-east-1",
+		},
+	}, nil
+}
+
+func (m *MockDynamoDBService) DescribeTable(ctx context.Context, tableName string) (*DynamoDBTable, error) {
+	return &DynamoDBTable{
+		Name:           tableName,
+		Status:         "ACTIVE",
+		BillingMode:    BillingModeOnDemand,
+		ItemCount:      100,
+		TableSizeBytes: 10240,
+		CreatedAt:      time.Now(),
+		KeySchema: []DynamoDBKeySchemaElement{
+			{AttributeName: "id", KeyType: KeyTypeHash},
+		},
+		AttributeDefinitions: []DynamoDBAttributeDefinition{
+			{AttributeName: "id", AttributeType: AttributeTypeString},
+		},
+		Region: "us-east-1",
+	}, nil
+}
+
+func (m *MockDynamoDBService) CreateTable(ctx context.Context, config *DynamoDBTableConfig) (*DynamoDBTable, error) {
+	return &DynamoDBTable{
+		Name:                 config.Name,
+		Status:               "CREATING",
+		BillingMode:          config.BillingMode,
+		CreatedAt:            time.Now(),
+		KeySchema:            []DynamoDBKeySchemaElement{config.HashKey},
+		AttributeDefinitions: config.AttributeDefinitions,
+		Region:               "us-east-1",
+	}, nil
+}
+
+func (m *MockDynamoDBService) DeleteTable(ctx context.Context, tableName string) error {
+	return nil
+}
+
+func (m *MockDynamoDBService) UpdateTable(ctx context.Context, tableName string, config *DynamoDBTableConfig) error {
+	return nil
+}
+
+func (m *MockDynamoDBService) ScanTable(ctx context.Context, tableName string, limit int64, exclusiveStartKey map[string]interface{}) (*DynamoDBScanResult, error) {
+	return &DynamoDBScanResult{
+		Items: []DynamoDBItem{
+			{Attributes: map[string]interface{}{"id": "1", "name": "Item 1"}},
+			{Attributes: map[string]interface{}{"id": "2", "name": "Item 2"}},
+		},
+		Count:        2,
+		ScannedCount: 2,
+	}, nil
+}
+
+func (m *MockDynamoDBService) GetItem(ctx context.Context, tableName string, key map[string]interface{}) (*DynamoDBItem, error) {
+	return &DynamoDBItem{
+		Attributes: map[string]interface{}{"id": "1", "name": "Mock Item"},
+	}, nil
+}
+
+func (m *MockDynamoDBService) PutItem(ctx context.Context, tableName string, item map[string]interface{}) error {
+	return nil
+}
+
+func (m *MockDynamoDBService) DeleteItem(ctx context.Context, tableName string, key map[string]interface{}) error {
+	return nil
+}
+
+func (m *MockDynamoDBService) UpdateTTL(ctx context.Context, tableName string, enabled bool, attributeName string) error {
+	return nil
+}
+
+func (m *MockDynamoDBService) DescribeTTL(ctx context.Context, tableName string) (bool, string, error) {
+	return false, "", nil
 }
 
 // MockServerlessService mock implementation

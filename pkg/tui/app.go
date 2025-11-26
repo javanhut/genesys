@@ -138,6 +138,10 @@ func createDashboard(appCtx *AppContext, header, footer *tview.TextView) *tview.
 		showLambdaList(appCtx, header, footer)
 	})
 
+	list.AddItem("DynamoDB Tables", "Manage NoSQL database tables", '5', func() {
+		showDynamoDBList(appCtx, header, footer)
+	})
+
 	list.AddItem("Quit", "Exit the TUI", 'q', func() {
 		appCtx.Stop()
 	})
@@ -2055,6 +2059,516 @@ func showLambdaLogs(appCtx *AppContext, header, footer *tview.TextView, function
 			logsView.SetText(text.String())
 		})
 	}()
+}
+
+// DynamoDB TUI functions
+
+func showDynamoDBList(appCtx *AppContext, header, footer *tview.TextView) {
+	table := tview.NewTable()
+	table.SetBorders(false)
+	table.SetSelectable(true, false)
+	table.SetFixed(1, 0)
+	table.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.ColorDarkCyan).
+		Foreground(tcell.ColorWhite))
+
+	// Add headers
+	headers := []string{"Table Name", "Status", "Billing Mode", "Items", "Size", "Region"}
+	for i, h := range headers {
+		cell := tview.NewTableCell(h).
+			SetTextColor(tcell.ColorYellow).
+			SetAlign(tview.AlignLeft).
+			SetSelectable(false).
+			SetAttributes(tcell.AttrBold)
+		table.SetCell(0, i, cell)
+	}
+
+	// Update footer
+	footer.SetText("[yellow]Up/Down: Navigate[white] [gray]|[white] [yellow]Enter: Details[white] [gray]|[white] [yellow]b: Browse Items[white] [gray]|[white] [yellow]d: Delete[white] [gray]|[white] [yellow]r: Refresh[white] [gray]|[white] [yellow]ESC: Back[white]")
+
+	// Handle keyboard shortcuts
+	var tables []*provider.DynamoDBTable
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			showDashboard(appCtx, header, footer)
+			return nil
+		case tcell.KeyEnter:
+			row, _ := table.GetSelection()
+			if row > 0 && row <= len(tables) {
+				showDynamoDBDetail(appCtx, header, footer, tables[row-1])
+			}
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q':
+				appCtx.Stop()
+				return nil
+			case 'b':
+				row, _ := table.GetSelection()
+				if row > 0 && row <= len(tables) {
+					showDynamoDBBrowser(appCtx, header, footer, tables[row-1])
+				}
+				return nil
+			case 'd':
+				row, _ := table.GetSelection()
+				if row > 0 && row <= len(tables) {
+					confirmDeleteDynamoDBTable(appCtx, header, footer, table, tables[row-1], &tables)
+				}
+				return nil
+			case 'r':
+				loadDynamoDBTables(appCtx, table, &tables)
+				return nil
+			}
+		}
+		return event
+	})
+
+	// Create layout
+	flex := tview.NewFlex()
+	flex.SetBorder(true)
+	flex.SetTitle(" DynamoDB Tables ")
+	flex.SetBorderColor(tcell.ColorBlue)
+	flex.AddItem(table, 0, 1, true)
+
+	mainLayout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(header, 1, 0, false).
+		AddItem(flex, 0, 1, true).
+		AddItem(footer, 1, 0, false)
+
+	appCtx.Pages.AddPage("dynamodb-list", mainLayout, true, false)
+	appCtx.Pages.SwitchToPage("dynamodb-list")
+	appCtx.App.SetFocus(table)
+
+	// Load tables
+	loadDynamoDBTables(appCtx, table, &tables)
+}
+
+func loadDynamoDBTables(appCtx *AppContext, table *tview.Table, tablesPtr *[]*provider.DynamoDBTable) {
+	// Clear existing rows except header
+	for i := table.GetRowCount() - 1; i > 0; i-- {
+		table.RemoveRow(i)
+	}
+
+	// Show loading
+	table.SetCell(1, 0, tview.NewTableCell("Loading tables...").
+		SetTextColor(tcell.ColorGray))
+
+	// Load tables asynchronously
+	go func() {
+		tables, err := appCtx.Provider.DynamoDB().ListTables(appCtx.Ctx)
+
+		appCtx.App.QueueUpdateDraw(func() {
+			// Clear loading message
+			table.RemoveRow(1)
+
+			if err != nil {
+				table.SetCell(1, 0, tview.NewTableCell(fmt.Sprintf("Error: %v", err)).
+					SetTextColor(tcell.ColorRed))
+				return
+			}
+
+			*tablesPtr = tables
+
+			if len(tables) == 0 {
+				table.SetCell(1, 0, tview.NewTableCell("No DynamoDB tables found").
+					SetTextColor(tcell.ColorGray))
+				return
+			}
+
+			for i, t := range tables {
+				row := i + 1
+
+				// Format size
+				size := formatDynamoDBBytes(t.TableSizeBytes)
+
+				// Format billing mode
+				billingMode := "On-Demand"
+				if t.BillingMode == provider.BillingModeProvisioned {
+					billingMode = "Provisioned"
+				}
+
+				// Status color
+				statusColor := tcell.ColorGreen
+				if t.Status != "ACTIVE" {
+					statusColor = tcell.ColorYellow
+				}
+
+				table.SetCell(row, 0, tview.NewTableCell(t.Name).SetTextColor(tcell.ColorWhite))
+				table.SetCell(row, 1, tview.NewTableCell(t.Status).SetTextColor(statusColor))
+				table.SetCell(row, 2, tview.NewTableCell(billingMode).SetTextColor(tcell.ColorBlue))
+				table.SetCell(row, 3, tview.NewTableCell(fmt.Sprintf("%d", t.ItemCount)).SetTextColor(tcell.ColorWhite))
+				table.SetCell(row, 4, tview.NewTableCell(size).SetTextColor(tcell.ColorWhite))
+				table.SetCell(row, 5, tview.NewTableCell(t.Region).SetTextColor(tcell.ColorGray))
+			}
+		})
+	}()
+}
+
+func formatDynamoDBBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func showDynamoDBDetail(appCtx *AppContext, header, footer *tview.TextView, dynamoTable *provider.DynamoDBTable) {
+	detail := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+
+	// Build detail content
+	content := fmt.Sprintf(`[yellow]Table Name:[white] %s
+[yellow]Status:[white] %s
+[yellow]ARN:[white] %s
+[yellow]Billing Mode:[white] %s
+[yellow]Item Count:[white] %d
+[yellow]Size:[white] %s
+[yellow]Region:[white] %s
+[yellow]Created:[white] %s
+
+[yellow]Key Schema:[white]
+`, dynamoTable.Name, dynamoTable.Status, dynamoTable.ARN, dynamoTable.BillingMode, dynamoTable.ItemCount,
+		formatDynamoDBBytes(dynamoTable.TableSizeBytes), dynamoTable.Region, dynamoTable.CreatedAt.Format("2006-01-02 15:04:05"))
+
+	for _, ks := range dynamoTable.KeySchema {
+		content += fmt.Sprintf("  - %s (%s)\n", ks.AttributeName, ks.KeyType)
+	}
+
+	if dynamoTable.ProvisionedThroughput != nil {
+		content += fmt.Sprintf(`
+[yellow]Provisioned Throughput:[white]
+  Read Capacity Units: %d
+  Write Capacity Units: %d
+`, dynamoTable.ProvisionedThroughput.ReadCapacityUnits, dynamoTable.ProvisionedThroughput.WriteCapacityUnits)
+	}
+
+	if dynamoTable.StreamEnabled {
+		content += fmt.Sprintf(`
+[yellow]Streams:[white] Enabled (%s)
+`, dynamoTable.StreamViewType)
+	}
+
+	if len(dynamoTable.GlobalSecondaryIndexes) > 0 {
+		content += "\n[yellow]Global Secondary Indexes:[white]\n"
+		for _, gsi := range dynamoTable.GlobalSecondaryIndexes {
+			content += fmt.Sprintf("  - %s (Status: %s)\n", gsi.IndexName, gsi.IndexStatus)
+		}
+	}
+
+	detail.SetText(content)
+	detail.SetBorder(true)
+	detail.SetTitle(fmt.Sprintf(" Table: %s ", dynamoTable.Name))
+	detail.SetBorderColor(tcell.ColorBlue)
+
+	// Update footer
+	footer.SetText("[yellow]Up/Down: Scroll[white] [gray]|[white] [yellow]b: Browse Items[white] [gray]|[white] [yellow]ESC: Back[white] [gray]|[white] [yellow]q: Quit[white]")
+
+	// Handle input
+	detail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			appCtx.Pages.RemovePage("dynamodb-detail")
+			showDynamoDBList(appCtx, header, footer)
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q':
+				appCtx.Stop()
+				return nil
+			case 'b':
+				appCtx.Pages.RemovePage("dynamodb-detail")
+				showDynamoDBBrowser(appCtx, header, footer, dynamoTable)
+				return nil
+			}
+		}
+		return event
+	})
+
+	mainLayout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(header, 1, 0, false).
+		AddItem(detail, 0, 1, true).
+		AddItem(footer, 1, 0, false)
+
+	appCtx.Pages.AddPage("dynamodb-detail", mainLayout, true, true)
+	appCtx.App.SetFocus(detail)
+}
+
+func confirmDeleteDynamoDBTable(appCtx *AppContext, header, footer *tview.TextView, listTable *tview.Table, dynamoTable *provider.DynamoDBTable, tablesPtr *[]*provider.DynamoDBTable) {
+	modal := tview.NewModal().
+		SetText(fmt.Sprintf("Are you sure you want to delete table '%s'?\n\nThis action cannot be undone.", dynamoTable.Name)).
+		AddButtons([]string{"Cancel", "Delete"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			if buttonLabel == "Delete" {
+				deleteDynamoDBTable(appCtx, listTable, dynamoTable, tablesPtr)
+			}
+			appCtx.Pages.RemovePage("delete-dynamodb-confirm")
+			appCtx.App.SetFocus(listTable)
+		})
+
+	appCtx.Pages.AddPage("delete-dynamodb-confirm", modal, true, true)
+}
+
+func deleteDynamoDBTable(appCtx *AppContext, listTable *tview.Table, dynamoTable *provider.DynamoDBTable, tablesPtr *[]*provider.DynamoDBTable) {
+	// Show deleting status
+	modal := tview.NewModal().
+		SetText(fmt.Sprintf("Deleting table '%s'...", dynamoTable.Name))
+
+	appCtx.Pages.AddPage("delete-dynamodb-status", modal, true, true)
+
+	go func() {
+		err := appCtx.Provider.DynamoDB().DeleteTable(appCtx.Ctx, dynamoTable.Name)
+
+		appCtx.App.QueueUpdateDraw(func() {
+			appCtx.Pages.RemovePage("delete-dynamodb-status")
+
+			if err != nil {
+				errorModal := tview.NewModal().
+					SetText(fmt.Sprintf("Failed to delete table: %v", err)).
+					AddButtons([]string{"OK"}).
+					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						appCtx.Pages.RemovePage("delete-dynamodb-error")
+						appCtx.App.SetFocus(listTable)
+					})
+				appCtx.Pages.AddPage("delete-dynamodb-error", errorModal, true, true)
+				return
+			}
+
+			// Refresh the table list
+			loadDynamoDBTables(appCtx, listTable, tablesPtr)
+			appCtx.App.SetFocus(listTable)
+		})
+	}()
+}
+
+func showDynamoDBBrowser(appCtx *AppContext, header, footer *tview.TextView, dynamoTable *provider.DynamoDBTable) {
+	table := tview.NewTable()
+	table.SetBorders(false)
+	table.SetSelectable(true, false)
+	table.SetFixed(1, 0)
+	table.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.ColorDarkCyan).
+		Foreground(tcell.ColorWhite))
+
+	// Update footer
+	footer.SetText("[yellow]Up/Down: Navigate[white] [gray]|[white] [yellow]Enter: View Item[white] [gray]|[white] [yellow]n: Next Page[white] [gray]|[white] [yellow]r: Refresh[white] [gray]|[white] [yellow]ESC: Back[white]")
+
+	var items []provider.DynamoDBItem
+	var lastEvaluatedKey map[string]interface{}
+	pageSize := int64(25)
+
+	// Handle keyboard shortcuts
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			appCtx.Pages.RemovePage("dynamodb-browser")
+			showDynamoDBList(appCtx, header, footer)
+			return nil
+		case tcell.KeyEnter:
+			row, _ := table.GetSelection()
+			if row > 0 && row <= len(items) {
+				showDynamoDBItemDetail(appCtx, table, items[row-1])
+			}
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q':
+				appCtx.Stop()
+				return nil
+			case 'r':
+				loadDynamoDBItems(appCtx, table, dynamoTable, nil, pageSize, &items, &lastEvaluatedKey)
+				return nil
+			case 'n':
+				if lastEvaluatedKey != nil {
+					loadDynamoDBItems(appCtx, table, dynamoTable, lastEvaluatedKey, pageSize, &items, &lastEvaluatedKey)
+				}
+				return nil
+			}
+		}
+		return event
+	})
+
+	// Create layout
+	flex := tview.NewFlex()
+	flex.SetBorder(true)
+	flex.SetTitle(fmt.Sprintf(" Browse: %s ", dynamoTable.Name))
+	flex.SetBorderColor(tcell.ColorBlue)
+	flex.AddItem(table, 0, 1, true)
+
+	mainLayout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(header, 1, 0, false).
+		AddItem(flex, 0, 1, true).
+		AddItem(footer, 1, 0, false)
+
+	appCtx.Pages.AddPage("dynamodb-browser", mainLayout, true, false)
+	appCtx.Pages.SwitchToPage("dynamodb-browser")
+	appCtx.App.SetFocus(table)
+
+	// Load items
+	loadDynamoDBItems(appCtx, table, dynamoTable, nil, pageSize, &items, &lastEvaluatedKey)
+}
+
+func loadDynamoDBItems(appCtx *AppContext, table *tview.Table, dynamoTable *provider.DynamoDBTable, startKey map[string]interface{}, pageSize int64, itemsPtr *[]provider.DynamoDBItem, lastKeyPtr *map[string]interface{}) {
+	// Clear existing rows
+	for i := table.GetRowCount() - 1; i >= 0; i-- {
+		table.RemoveRow(i)
+	}
+
+	// Show loading
+	table.SetCell(0, 0, tview.NewTableCell("Loading items...").
+		SetTextColor(tcell.ColorGray))
+
+	// Load items asynchronously
+	go func() {
+		result, err := appCtx.Provider.DynamoDB().ScanTable(appCtx.Ctx, dynamoTable.Name, pageSize, startKey)
+
+		appCtx.App.QueueUpdateDraw(func() {
+			// Clear table
+			for i := table.GetRowCount() - 1; i >= 0; i-- {
+				table.RemoveRow(i)
+			}
+
+			if err != nil {
+				table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("Error: %v", err)).
+					SetTextColor(tcell.ColorRed))
+				return
+			}
+
+			*itemsPtr = result.Items
+			*lastKeyPtr = result.LastEvaluatedKey
+
+			if len(result.Items) == 0 {
+				table.SetCell(0, 0, tview.NewTableCell("No items found").
+					SetTextColor(tcell.ColorGray))
+				return
+			}
+
+			// Determine columns from key schema and first item
+			columns := getDynamoDBColumns(dynamoTable, result.Items)
+
+			// Add headers
+			for i, col := range columns {
+				cell := tview.NewTableCell(col).
+					SetTextColor(tcell.ColorYellow).
+					SetAlign(tview.AlignLeft).
+					SetSelectable(false).
+					SetAttributes(tcell.AttrBold)
+				table.SetCell(0, i, cell)
+			}
+
+			// Add item rows
+			for i, item := range result.Items {
+				row := i + 1
+				for j, col := range columns {
+					value := ""
+					if v, ok := item.Attributes[col]; ok {
+						value = formatDynamoDBValue(v)
+					}
+					// Truncate long values
+					if len(value) > 40 {
+						value = value[:37] + "..."
+					}
+					table.SetCell(row, j, tview.NewTableCell(value).SetTextColor(tcell.ColorWhite))
+				}
+			}
+		})
+	}()
+}
+
+func getDynamoDBColumns(dynamoTable *provider.DynamoDBTable, items []provider.DynamoDBItem) []string {
+	var columns []string
+
+	// Start with key schema columns
+	for _, ks := range dynamoTable.KeySchema {
+		columns = append(columns, ks.AttributeName)
+	}
+
+	// Add other columns from first item
+	if len(items) > 0 {
+		for key := range items[0].Attributes {
+			// Skip if already in columns
+			found := false
+			for _, col := range columns {
+				if col == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				columns = append(columns, key)
+			}
+		}
+	}
+
+	// Limit to reasonable number of columns
+	if len(columns) > 8 {
+		columns = columns[:8]
+	}
+
+	return columns
+}
+
+func formatDynamoDBValue(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case int64:
+		return fmt.Sprintf("%d", val)
+	case float64:
+		return fmt.Sprintf("%g", val)
+	case bool:
+		return fmt.Sprintf("%t", val)
+	case nil:
+		return "null"
+	default:
+		// For complex types, try to format nicely
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+func showDynamoDBItemDetail(appCtx *AppContext, browserTable *tview.Table, item provider.DynamoDBItem) {
+	detail := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+
+	// Build content as formatted key-value pairs
+	var content string
+	for key, value := range item.Attributes {
+		content += fmt.Sprintf("[yellow]%s:[white] %v\n", key, value)
+	}
+
+	detail.SetText(content)
+	detail.SetBorder(true)
+	detail.SetTitle(" Item Detail ")
+	detail.SetBorderColor(tcell.ColorBlue)
+
+	// Handle input
+	detail.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			appCtx.Pages.RemovePage("dynamodb-item-detail")
+			appCtx.App.SetFocus(browserTable)
+			return nil
+		case tcell.KeyRune:
+			if event.Rune() == 'q' {
+				appCtx.Stop()
+				return nil
+			}
+		}
+		return event
+	})
+
+	appCtx.Pages.AddPage("dynamodb-item-detail", detail, true, true)
+	appCtx.App.SetFocus(detail)
 }
 
 func showDashboard(appCtx *AppContext, header, footer *tview.TextView) {

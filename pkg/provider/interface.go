@@ -16,6 +16,7 @@ type Provider interface {
 	Storage() StorageService
 	Network() NetworkService
 	Database() DatabaseService
+	DynamoDB() DynamoDBService
 	Serverless() ServerlessService
 
 	// State management
@@ -93,7 +94,7 @@ type NetworkService interface {
 	AdoptNetwork(ctx context.Context, id string) (*Network, error)
 }
 
-// DatabaseService handles database resources
+// DatabaseService handles database resources (RDS)
 type DatabaseService interface {
 	CreateDatabase(ctx context.Context, config *DatabaseConfig) (*Database, error)
 	GetDatabase(ctx context.Context, id string) (*Database, error)
@@ -103,6 +104,26 @@ type DatabaseService interface {
 	// Discovery
 	DiscoverDatabases(ctx context.Context) ([]*Database, error)
 	AdoptDatabase(ctx context.Context, id string) (*Database, error)
+}
+
+// DynamoDBService handles DynamoDB table operations
+type DynamoDBService interface {
+	// Table operations
+	ListTables(ctx context.Context) ([]*DynamoDBTable, error)
+	DescribeTable(ctx context.Context, tableName string) (*DynamoDBTable, error)
+	CreateTable(ctx context.Context, config *DynamoDBTableConfig) (*DynamoDBTable, error)
+	DeleteTable(ctx context.Context, tableName string) error
+	UpdateTable(ctx context.Context, tableName string, config *DynamoDBTableConfig) error
+
+	// Item operations
+	ScanTable(ctx context.Context, tableName string, limit int64, exclusiveStartKey map[string]interface{}) (*DynamoDBScanResult, error)
+	GetItem(ctx context.Context, tableName string, key map[string]interface{}) (*DynamoDBItem, error)
+	PutItem(ctx context.Context, tableName string, item map[string]interface{}) error
+	DeleteItem(ctx context.Context, tableName string, key map[string]interface{}) error
+
+	// TTL management
+	UpdateTTL(ctx context.Context, tableName string, enabled bool, attributeName string) error
+	DescribeTTL(ctx context.Context, tableName string) (bool, string, error)
 }
 
 // ServerlessService handles serverless resources
